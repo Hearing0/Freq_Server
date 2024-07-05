@@ -8,16 +8,22 @@
 // #include <utils/phasing_utils.c>
 #include <string.h>
 #include <math.h>
-#include "ini.h"
+#include "../utils/ini_parser/ini.c"
+
+#define PI 3.14159265358979323846
 
 
-#define PI (ccos(-1))
-
-
-int C = 3^8;
+int C = (int)pow(3.0, 8.0);
 bool verbose = false;
 
 // #define RESTRICT_FILE = '/home/radar/repos/SuperDARN_MSI_ROS/linux/home/radar/ros.3.6/tables/superdarn/site/site.sps/restrict.dat.inst'
+
+
+/*
+* NOTE: 
+* When compiling make sure to add "-lm" and "-lfftw3" to link the libraries 
+* to the compilier. 
+*/
 
 
 typedef struct {
@@ -150,7 +156,6 @@ void calc_clear_freq_on_raw_samples(fftw_complex *raw_samples, SampleMetaData *m
     for (int i = 0; i < num_samples; i++) {
         // ...ignoring back array antennas
         if (i <= 15 || i >= 20)
-            // HACK matrix multi
             phasing_vector[i] = rad_to_rect(antennas[i] * phase_increment);
             printf("phase_vector[%d]: %f + %fi\n", i, creal(phasing_vector[i]), cimag(phasing_vector[i]));
     }
@@ -190,17 +195,17 @@ void calc_clear_freq_on_raw_samples(fftw_complex *raw_samples, SampleMetaData *m
     // // Output results
     // printf("Clear Frequency: %f, Noise: %f\n", tfreq, noise);
 
-    // // Free allocated memory
-    // fftw_free(phasing_vector);
-    // fftw_free(beamformed_samples);
-    // fftw_free(spectrum_power);
-    // free(freq_vector);
+    // Free allocated memory
+    fftw_free(phasing_vector);
+    fftw_free(beamformed_samples);
+    fftw_free(spectrum_power);
+    free(freq_vector);
 
 }
 
 int main() {
     // Stopwatch Start
-    int t1 = dsecnd();
+    // double t1 = dsecnd();
 
     // HACK: Setup file_path environment variable
     const char *input_file_path = "../Freq_Server/utils/clear_freq_input/clrfreq_dump.1.txt";
@@ -222,13 +227,11 @@ int main() {
     );
 
 
-
-
     // XXX: Define other parameters
     double restricted_frequencies[] = { /*...*/ };
     double clear_freq_range[] = { /*...*/ };
     double beam_angle; // XXX: Replicate beam angle
-    double smsep = 1 / (2*250*10^3); // ~4 ms
+    double smsep = 1 / (2 * 250 * pow(10, 3)); // ~4 ms
 
 
     // Call calc_clear_freq_on_raw_samples
@@ -238,8 +241,8 @@ int main() {
     fftw_free(raw_samples);
     
     // Print processing time; Stopwatch End
-    int t2 = dsecnd();
-    printf("Time for Clear Freq Search: %lf", (t2-t1));
+    // double t2 = dsecnd();
+    // printf("Time for Clear Freq Search: %lf", (t2-t1));
 
     return 0;
 };

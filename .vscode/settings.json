@@ -3,7 +3,8 @@
         "string.h": "c",
         "stdlib.h": "c",
         "unistd.h": "c",
-        "math.h": "c"
+        "math.h": "c",
+        "complex.h": "c"
     },
     "docomment.activateOnEnter": true
 }
