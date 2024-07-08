@@ -6,5 +6,6 @@
         "math.h": "c",
         "complex.h": "c"
     },
-    "docomment.activateOnEnter": true
+    "docomment.activateOnEnter": true,
+    "C_Cpp.errorSquiggles": "enabled"
 }

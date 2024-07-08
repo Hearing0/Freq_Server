@@ -12,7 +12,7 @@
 
 #define PI 3.14159265358979323846
 
-
+//
 int C = (int)pow(3.0, 8.0);
 bool verbose = false;
 
@@ -28,6 +28,7 @@ bool verbose = false;
 
 typedef struct {
     int *antenna_list;
+    int num_antennas;
     int number_of_samples;
     double x_spacing;
     int usrp_rf_rate;
@@ -53,10 +54,18 @@ void read_input_data(const char *filename, SampleMetaData *meta_data, fftw_compl
         if (strncmp(line, "antenna_list:", 13) == 0) {
             char *token = strtok(line + 14, ",");
             while (token != NULL) {
-                (meta_data->antenna_list) = realloc(meta_data->antenna_list, (++antenna_list_size) * sizeof(int));
-                (meta_data->antenna_list)[antenna_list_size - 1] = atoi(token);
+                // Remove any leading or trailing whitespace from token
+                while (isspace(*token)) token++;
+                char *end = token + strlen(token) - 1;
+                while (end > token && isspace(*end)) end--;
+                *(end + 1) = '\0';
+
+                meta_data->antenna_list = realloc(meta_data->antenna_list, (++antenna_list_size) * sizeof(int));
+                meta_data->antenna_list[antenna_list_size - 1] = atoi(token);
+
                 token = strtok(NULL, ",");
             }
+            meta_data->num_antennas = antenna_list_size;
             continue;
         }
 
@@ -94,8 +103,7 @@ double calc_phase_increment(double beam_angle, double center_frequency, double x
     double wavelength = C / center_frequency;
     double phase_shift = (2 * PI * x_spacing * sin(beam_angle)) / wavelength;
     if (verbose) {
-        phase_shift *= 180 / PI;
-        printf("center_freq: %lf x_spacing: %lf \nphase_shift: %lf degree", center_frequency, x_spacing, phase_shift);
+        printf("center_freq: %lf x_spacing: %lf \nphase_shift: %lf degree", center_frequency, x_spacing, phase_shift * 180 / PI);
     }
     return phase_shift; 
 }
@@ -152,27 +160,36 @@ void calc_clear_freq_on_raw_samples(fftw_complex *raw_samples, SampleMetaData *m
 
     // Calculate and Apply phasing vector
     double phase_increment = calc_phase_increment(beam_angle, (clear_freq_range[0] + clear_freq_range[1]) / 2 * 1000, meta_data->x_spacing);
-    printf("phase_increment: %lf", phase_increment);
-    for (int i = 0; i < num_samples; i++) {
-        // ...ignoring back array antennas
-        if (i <= 15 || i >= 20)
-            phasing_vector[i] = rad_to_rect(antennas[i] * phase_increment);
-            printf("phase_vector[%d]: %f + %fi\n", i, creal(phasing_vector[i]), cimag(phasing_vector[i]));
+    printf("phase_increment: %lf\n", phase_increment);
+
+    printf("antenna size: %d\n", meta_data->num_antennas);
+
+    for (int i = 0; i < meta_data->num_antennas; i++) {
+        if (i <= 15 || i >= 20) {
+            if (i < meta_data->num_antennas) {
+                printf("antenna[%d]: %d\n", i, antennas[i]);
+                phasing_vector[i] = rad_to_rect(antennas[i] * phase_increment);
+                printf("phase_vector[%d]: %f + %fi\n", i, creal(phasing_vector[i]), cimag(phasing_vector[i]));
+            } else {
+                fprintf(stderr, "Error: Accessing antennas out of bounds at index %d\n", i);
+                exit(EXIT_FAILURE);
+            }
+        }
     }
 
-    // Apply beamforming
-    for (int i = 0; i < num_samples; i++) {
-        beamformed_samples[i] = phasing_vector[i] * raw_samples[i];
-        printf("beamformed_samples[%d]: %f + %fi\n", i, creal(beamformed_samples[i]), cimag(beamformed_samples[i]));
-    }
+    // // Apply beamforming
+    // for (int i = 0; i < num_samples; i++) {
+    //     beamformed_samples[i] = phasing_vector[i] * raw_samples[i];
+    //     printf("beamformed_samples[%d]: %f + %fi\n", i, creal(beamformed_samples[i]), cimag(beamformed_samples[i]));
+    // }
 
-    // Spectral Estimation
-    fft_clrfreq_samples(beamformed_samples, num_samples, spectrum_power);
+    // // Spectral Estimation
+    // fft_clrfreq_samples(beamformed_samples, num_samples, spectrum_power);
 
-    // Print the spectrum power
-    for (int i = 0; i < num_samples; i++) {
-        printf("Frequency bin %d: %f + %fi\n", i, creal(spectrum_power[i]), cimag(spectrum_power[i]));
-    }
+    // // Print the spectrum power
+    // for (int i = 0; i < num_samples; i++) {
+    //     printf("Frequency bin %d: %f + %fi\n", i, creal(spectrum_power[i]), cimag(spectrum_power[i]));
+    // }
 
 
     /// END of Spectrum Calc
@@ -195,7 +212,8 @@ void calc_clear_freq_on_raw_samples(fftw_complex *raw_samples, SampleMetaData *m
     // // Output results
     // printf("Clear Frequency: %f, Noise: %f\n", tfreq, noise);
 
-    // Free allocated memory
+    printf("Finished Clear Freq!");
+    
     fftw_free(phasing_vector);
     fftw_free(beamformed_samples);
     fftw_free(spectrum_power);
@@ -213,8 +231,8 @@ int main() {
     // const char *output_file_path = "../utils/txt_output/result.txt";
 
     // Initial Data Variables
-    SampleMetaData meta_data;
-    fftw_complex *raw_samples;
+    SampleMetaData meta_data = {0};
+    fftw_complex *raw_samples = NULL;
 
     // Load raw_samples and meta_data
     read_input_data(input_file_path, &meta_data, &raw_samples);
@@ -226,19 +244,24 @@ int main() {
         meta_data.usrp_fcenter
     );
 
+    
+
 
     // XXX: Define other parameters
-    double restricted_frequencies[] = { /*...*/ };
-    double clear_freq_range[] = { /*...*/ };
-    double beam_angle; // XXX: Replicate beam angle
+    double restricted_frequencies[] = { 0,0 };
+    double clear_freq_range[] = { 25 * pow(10,3), 40 * pow(10,3) };
+    double beam_angle = 0.08482300164692443; //0.08482300164692443
     double smsep = 1 / (2 * 250 * pow(10, 3)); // ~4 ms
 
 
     // Call calc_clear_freq_on_raw_samples
-    calc_clear_freq_on_raw_samples(raw_samples, &meta_data, NULL, NULL, beam_angle, smsep);
+    calc_clear_freq_on_raw_samples(
+        raw_samples, &meta_data, restricted_frequencies, 
+        clear_freq_range, beam_angle, smsep);
     
     // Free allocated memory
     fftw_free(raw_samples);
+    free(meta_data.antenna_list);
     
     // Print processing time; Stopwatch End
     // double t2 = dsecnd();
