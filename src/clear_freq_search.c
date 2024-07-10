@@ -13,7 +13,7 @@
 #define PI 3.14159265358979323846
 
 //
-int C = (int)pow(3.0, 8.0);
+int C = 3e8;
 bool verbose = false;
 
 // #define RESTRICT_FILE = '/home/radar/repos/SuperDARN_MSI_ROS/linux/home/radar/ros.3.6/tables/superdarn/site/site.sps/restrict.dat.inst'
@@ -35,7 +35,7 @@ typedef struct {
     int usrp_fcenter;
 } SampleMetaData;
 
-void read_input_data(const char *filename, SampleMetaData *meta_data, fftw_complex **raw_samples) {
+void read_input_data(const char *filename, SampleMetaData *meta_data, fftw_complex ***raw_samples) {
     FILE *file = fopen(filename, "r");
     if (file == NULL) {
         perror("Error opening file");
@@ -70,16 +70,27 @@ void read_input_data(const char *filename, SampleMetaData *meta_data, fftw_compl
         }
 
         if (strncmp(line, "raw_samples:", 12) == 0) {
-            *raw_samples = malloc((meta_data->number_of_samples) * sizeof(fftw_complex));
+            // Allocate mem
+            *raw_samples = (fftw_complex **)fftw_malloc(meta_data->num_antennas * sizeof(fftw_complex *));
+            for (int i = 0; i < meta_data->num_antennas; i++) {
+                (*raw_samples)[i] = (fftw_complex *)fftw_malloc(meta_data->number_of_samples * sizeof(fftw_complex));
+            }
             if (*raw_samples == NULL) {
                 perror("Error allocating memory for raw samples");
                 exit(EXIT_FAILURE);
             }
-            for (int i = 0; i < meta_data->number_of_samples; i++) {
-                double real, imag;
-                fgets(line, sizeof(line), file);
-                sscanf(line, "%lf,%lf", &real, &imag);
-                (*raw_samples)[i] = real + I * imag;
+            
+            // Store data
+            for (int i = 0; i < meta_data->num_antennas; i++) {
+                fftw_complex *ant_samples = (*raw_samples)[i];
+
+                for (int j = 0; j < meta_data->number_of_samples; j++) {
+                    double real, imag;
+                    fgets(line, sizeof(line), file);
+                    sscanf(line, "%lf,%lf", &real, &imag);
+                    
+                    ant_samples[j] = real + I * imag;
+                }
             }
             break;
         }
@@ -136,7 +147,7 @@ void find_clear_freq(fftw_complex *spectrum_power, double *freq_vector, double s
 }
 
 // HACK apply efficient matrix multi via cblas_dgemm
-void calc_clear_freq_on_raw_samples(fftw_complex *raw_samples, SampleMetaData *meta_data, double *restricted_frequencies, double *clear_freq_range, double beam_angle, double smsep) {
+void calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, SampleMetaData *meta_data, double *restricted_frequencies, double *clear_freq_range, double beam_angle, double smsep) {
     // Extract meta data
     int num_samples = meta_data->number_of_samples;
     int *antennas = meta_data->antenna_list;
@@ -161,27 +172,41 @@ void calc_clear_freq_on_raw_samples(fftw_complex *raw_samples, SampleMetaData *m
     // Calculate and Apply phasing vector
     double phase_increment = calc_phase_increment(beam_angle, (clear_freq_range[0] + clear_freq_range[1]) / 2 * 1000, meta_data->x_spacing);
     printf("phase_increment: %lf\n", phase_increment);
-
-    printf("antenna size: %d\n", meta_data->num_antennas);
-
+    // phase_increment = .000738
+    
     for (int i = 0; i < meta_data->num_antennas; i++) {
         if (i <= 15 || i >= 20) {
             if (i < meta_data->num_antennas) {
-                printf("antenna[%d]: %d\n", i, antennas[i]);
+                // printf("antenna[%d]: %d\n", i, antennas[i]);
                 phasing_vector[i] = rad_to_rect(antennas[i] * phase_increment);
-                printf("phase_vector[%d]: %f + %fi\n", i, creal(phasing_vector[i]), cimag(phasing_vector[i]));
+                // printf("phase_vector[%d]: %f + %fi\n", i, creal(phasing_vector[i]), cimag(phasing_vector[i]));
             } else {
                 fprintf(stderr, "Error: Accessing antennas out of bounds at index %d\n", i);
                 exit(EXIT_FAILURE);
             }
         }
     }
+    printf("phasing_vector[13]: %f + %fi\n", creal(phasing_vector[13]), cimag(phasing_vector[13]));
 
-    // // Apply beamforming
-    // for (int i = 0; i < num_samples; i++) {
-    //     beamformed_samples[i] = phasing_vector[i] * raw_samples[i];
-    //     printf("beamformed_samples[%d]: %f + %fi\n", i, creal(beamformed_samples[i]), cimag(beamformed_samples[i]));
-    // }
+    // Apply beamforming
+    for (int i = 0; i < num_samples; i++) {
+        double real_sum = 0.0;
+        double imag_sum = 0.0;
+        
+        for (int aidx = 0; aidx < meta_data->num_antennas; aidx++) {
+            double real_sample = creal(raw_samples[aidx][i]);       // TODO: convert from fftw to __complex___ 
+            double imag_sample = cimag(raw_samples[aidx][i]);
+            double real_phase = creal(phasing_vector[aidx]);
+            double imag_phase = cimag(phasing_vector[aidx]);
+
+            real_sum += real_sample * real_phase - imag_sample * imag_phase;
+            imag_sum += real_sample * imag_phase + imag_sample * real_phase;
+            // printf("beamformed_samples[%d]: %f + %fi\n", i, creal(beamformed_samples[i]), cimag(beamformed_samples[i]));
+        }
+
+        beamformed_samples[i] = real_sum + I * imag_sum;
+    }
+    printf("beamformed[2499]:  %f + %fi\n", creal(beamformed_samples[2499]), cimag(beamformed_samples[2499]));
 
     // // Spectral Estimation
     // fft_clrfreq_samples(beamformed_samples, num_samples, spectrum_power);
@@ -232,7 +257,7 @@ int main() {
 
     // Initial Data Variables
     SampleMetaData meta_data = {0};
-    fftw_complex *raw_samples = NULL;
+    fftw_complex **raw_samples = NULL;
 
     // Load raw_samples and meta_data
     read_input_data(input_file_path, &meta_data, &raw_samples);
@@ -244,7 +269,10 @@ int main() {
         meta_data.usrp_fcenter
     );
 
-    
+    // Check last sample
+    // fftw_complex sample = raw_samples[meta_data.num_antennas - 1][meta_data.number_of_samples - 1];
+    // printf("raw_samples[%d][%d]: %f + %fi\n", meta_data.num_antennas - 1, meta_data.number_of_samples - 1, creal(sample), cimag(sample));
+    // Should be raw_samples[13][2499]: -134.000000 + 168.000000i
 
 
     // XXX: Define other parameters
@@ -260,6 +288,9 @@ int main() {
         clear_freq_range, beam_angle, smsep);
     
     // Free allocated memory
+    for (int i = 0; i < meta_data.num_antennas; i++) {
+        fftw_free(raw_samples[i]);
+    }
     fftw_free(raw_samples);
     free(meta_data.antenna_list);
     
