@@ -141,6 +141,31 @@ void load_beam_config(double *x_spacing, int *n_beams, double *beam_sep){
 }
 
 /**
+ * @brief  Writes Frequency Spectrum to csv file to be plotted in python.
+ * @note   By DF
+ * @param  *filename: 
+ * @param  *spectrum: 
+ * @param  num_samples: 
+ * @retval None
+ */
+void write_spectrum_to_csv(const char *filename, fftw_complex *spectrum, double *freq_vector, int num_samples) {
+    FILE *file = fopen(filename, "w");
+    if (file == NULL) {
+        perror("Error opening file for writing");
+        exit(EXIT_FAILURE);
+    }
+
+    fprintf(file, "Frequency,Power\n");
+
+    for (int i = 0; i < num_samples; i++) {
+        double magnitude = sqrt(creal(spectrum[i]) * creal(spectrum[i]) + cimag(spectrum[i]) * cimag(spectrum[i]));
+        fprintf(file, "%f,%f\n", freq_vector[i], magnitude);
+    }
+
+    fclose(file);
+}
+
+/**
  * @brief  Calculates Beam Azimuth Angle.
  * @note   By DF
  * @param  n_beams:     Total number of beams
@@ -211,6 +236,8 @@ void find_clear_freq(fftw_complex *spectrum_power, double *freq_vector, double s
 
 // HACK apply efficient matrix multi via cblas_dgemm
 void calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_meta_data *meta_data, double *restricted_frequencies, double *clear_freq_range, double beam_angle, double smsep) {
+    char *spectrum_file = "spectrum_output.csv";
+    
     // Extract meta data
     int num_samples = meta_data->number_of_samples;
     int *antennas = meta_data->antenna_list;
@@ -282,23 +309,27 @@ void calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_meta_data
 
 
 
-    // // Spectral Estimation
-    // fft_clrfreq_samples(beamformed_samples, num_samples, spectrum_power);
+    // Spectral Estimation
+    fft_clrfreq_samples(beamformed_samples, num_samples, spectrum_power);
 
-    // // Print the spectrum power
-    // for (int i = 0; i < num_samples; i++) {
-    //     printf("Frequency bin %d: %f + %fi\n", i, creal(spectrum_power[i]), cimag(spectrum_power[i]));
-    // }
+    // Print the spectrum power
+    for (int i = 0; i < num_samples; i++) {
+        printf("Frequency bin %d: %f + %fi\n", i, creal(spectrum_power[i]), cimag(spectrum_power[i]));
+    }
+    
+
+
+    // Frequency Vector Calculation
+    double delta_f = meta_data->usrp_rf_rate / num_samples;
+
+    for (int i = 0; i < num_samples; i++) {
+        freq_vector[i] = i * delta_f - (meta_data->usrp_rf_rate / 2) + meta_data->usrp_fcenter * 1000;
+    }
+
+    write_spectrum_to_csv(spectrum_file, spectrum_power, freq_vector, num_samples);
 
 
     /// END of Spectrum Calc
-
-
-    // // Frequency Vector Calculation
-    // double delta_f = meta_data->usrp_rf_rate / num_samples;
-    // for (int i = 0; i < num_samples; i++) {
-    //     freq_vector[i] = i * delta_f - (meta_data->usrp_rf_rate / 2) + meta_data->usrp_fcenter * 1000;
-    // }
 
     // // Mask restricted frequencies
     // // 
