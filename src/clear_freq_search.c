@@ -23,8 +23,11 @@ bool verbose = true;
 * NOTE: 
 * When compiling make sure to add "-lm" and "-lfftw3" to link the libraries 
 * to the compilier. 
+* 
+* TODO: Find GCC optimize flags
 */
 
+// TODO: Find GCC optimization flags
 
 
 
