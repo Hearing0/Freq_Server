@@ -69,7 +69,7 @@ int main() {
         // Process Client Message
         printf("[Frequency Server] Processing client frequency data...\n");
         printf("[Frequency Server; from Client] ");
-        for (int i = 0; i < 10; i++) {  // Print first 10 integers for brevity
+        for (int i = 0; i < 2500; i++) {  // Print first 10 integers for brevity
             printf("%d ", shm_ptr[i]);
         }
         // Process data for clear freqs and store result
