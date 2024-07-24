@@ -7,8 +7,11 @@
 #include <fcntl.h>
 #include <semaphore.h>
 
+#define SAMPLES_NUM 2500
+#define ANTENNAS_NUM 14
+// #define SHM_SIZE (2 * SAMPLES_NUM * ANTENNAS_NUM * sizeof(int))  // Size for a 2x14x2500 array of integers
+#define SHM_SIZE (2 * SAMPLES_NUM * sizeof(int)) // TODO: Finish 2x2500 test
 #define SHM_NAME "/shared_memory"
-#define SHM_SIZE (2 * 2500 * sizeof(int))  // Size for a 2x2500 array of integers
 #define SEM_SERVER "/sem_server"
 #define SEM_CLIENT "/sem_client"
 
