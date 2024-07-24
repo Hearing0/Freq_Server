@@ -6,13 +6,96 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <semaphore.h>
+#include <math.h>
+#include <complex.h>
+#include <fftw3.h>      // FFT transform library
+#include <signal.h>
+#include "../../clear_freq_search.c"
 
+#define SAMPLES_NUM 2500
+#define ANTENNAS_NUM 14
 #define SHM_NAME "/shared_memory"
-#define SHM_SIZE (2 * 2500 * sizeof(int))  // Size for a 2x2500 array of integers
+#define SHM_SIZE (2 * SAMPLES_NUM * ANTENNAS_NUM * sizeof(int))  // Size for a 2x2500 array of integers
 #define SEM_SERVER "/sem_server"
 #define SEM_CLIENT "/sem_client"
 
+
+// Initiate with flags:
+// -lrt -pthread
+
+
+
+sem_t *sem_server = NULL;
+sem_t *sem_client = NULL;
+int *shm_ptr = NULL;
+int shm_fd = -1;
+
+
+
+
+
+// TODO: store sample_meta_data *meta_data, double **clear_freq_range
+void storeData(int **temp_arr, fftw_complex ***raw_samples) {
+    
+    // Allocate mem
+    *raw_samples = (fftw_complex **)fftw_malloc(ANTENNAS_NUM * sizeof(fftw_complex *));
+    for (int i = 0; i < ANTENNAS_NUM; i++) {
+        (*raw_samples)[i] = (fftw_complex *)fftw_malloc(SAMPLES_NUM * sizeof(fftw_complex));
+    }
+    if (*raw_samples == NULL) {
+        perror("Error allocating memory for raw samples");
+        exit(EXIT_FAILURE);
+    }
+
+    // Store data
+    for (int i = 0; i < ANTENNAS_NUM; i++) {
+        fftw_complex *ant_samples = (*raw_samples)[i];
+
+        for (int j = 0; j < SAMPLES_NUM; j++) {
+            double real, imag;
+            ant_samples[j] = real + I * imag;
+        }
+    }
+}
+
+/**
+ * @brief  Deallocates all service semaphores and SHM pointers.
+ * @note   
+ * @retval None
+ */
+void cleanup() {
+    if (sem_server) sem_close(sem_server);
+    if (sem_client) sem_close(sem_client);
+    if (shm_ptr) munmap(shm_ptr, SHM_SIZE);
+    if (shm_fd >= 0) close(shm_fd);
+    sem_unlink(SHM_NAME);
+    sem_unlink(SEM_SERVER);
+    sem_unlink(SEM_CLIENT);
+}
+
+/**
+ * @brief  Catch signals and exit gracefully.
+ * @note   
+ * @param  sig: Caught signal
+ * @retval None
+ */
+void handle_sigint(int sig) {
+    printf("\n[Frequency Server] Caught signal %d, cleaning up and exiting...\n", sig);
+    cleanup();
+
+    // Prompt exit to terminal  
+    printf("[Frequency Server] Main processes and communication terminated.\n"
+           "Goodbye.\n");
+           
+    exit(0);
+}
+
+
+
 int main() {
+    // Setup Signal Handler
+    signal(SIGINT, handle_sigint);
+
     // Open Shared Memory Object
     printf("[Frequency Server] Initializing Shared Memory Object...\n");
     int shm_fd = shm_open(SHM_NAME, O_CREAT | O_RDWR, 0666);
@@ -52,43 +135,58 @@ int main() {
 
     printf("[Frequency Server] Done Initializing...\n\n");
 
+    // Allocate mem
+    fftw_complex **temp_samples = NULL;
+    temp_samples = (fftw_complex **)fftw_malloc(ANTENNAS_NUM * sizeof(fftw_complex *));
+    if (temp_samples == NULL) {
+        perror("Error allocating memory for temp_samples pointers");
+        exit(EXIT_FAILURE);
+    }
+    for (int i = 0; i < ANTENNAS_NUM; i++) {
+        temp_samples[i] = (fftw_complex *)fftw_malloc(SAMPLES_NUM * sizeof(fftw_complex));
+        if (temp_samples[i] == NULL) {
+            perror("Error allocating memory for temp_samples elements");
+            exit(EXIT_FAILURE);
+        }
+    }
+            
+
     // Continuously Send and Receive messages via Shared Memory
     while (1) {
         // Write data to Shared Memory
         printf("[Frequency Server] Writing frequency data to Shared Memory...\n");
-        for (int i = 0; i < 2 * 2500; i++) {
-            shm_ptr[i] = i;  // Example data
+        for (int i = 0; i < ANTENNAS_NUM; i++) {
+            for (int i = 0; i < SAMPLES_NUM; i++) {
+                shm_ptr[i] = i; 
+            }
         }
         printf("[Frequency Server] Requesting new client to respond...\n\n");
-        sem_post(sem_client); // Request Client
+        sem_post(sem_client); 
         
-        // Await Server Request
         printf("[Frequency Server] Awaiting client response...\n");
         sem_wait(sem_server);   
 
-        // Process Client Message
         printf("[Frequency Server] Processing client frequency data...\n");
         printf("[Frequency Server; from Client] ");
-        for (int i = 0; i < 2500; i++) {  // Print first 10 integers for brevity
-            printf("%d ", shm_ptr[i]);
+        // Store data into complex form
+        for (int i = 0; i < ANTENNAS_NUM; i++) {    
+            for (int j = 0; j < SAMPLES_NUM; j++) {
+                temp_samples[i][j] = shm_ptr[i * SAMPLES_NUM + j] + I * shm_ptr[i * SAMPLES_NUM + j + 1];
+
+                // // Print first complex of each antenna sample batch for verification
+                // if (j == 0) {
+                //     printf("shm[%d][0 + 1]       =   %d + i%d\n", i, (int)shm_ptr[i], (int)shm_ptr[i + 1]);   
+                //     printf("vs\n");
+                //     printf("temp_samples[%d][%d] =  %f + i%f\n\n", i, j, creal(temp_samples[i][j]), cimag(temp_samples[i][j]));
+                // }
+            }
         }
+        printf("\n");
+
         // Process data for clear freqs and store result
-        printf("...\n");
+        clear_freq_search(temp_samples);
         printf("[Frequency Server] Processed Client response successfully...\n");
     }
-
-    // Clean up
-    munmap(shm_ptr, SHM_SIZE);
-    close(shm_fd);
-    sem_close(sem_server);
-    sem_close(sem_client);
-    sem_unlink(SHM_NAME);
-    sem_unlink(SEM_SERVER);
-    sem_unlink(SEM_CLIENT);
-
-    // Prompt exit to terminal  
-    printf("[Frequency Server] Main processes and communication terminated.\n"
-           "Goodbye.\n");
 
     return 0;
 }

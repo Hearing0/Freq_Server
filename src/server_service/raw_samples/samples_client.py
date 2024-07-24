@@ -108,15 +108,17 @@ def main():
         data, and requests server to process new data. When process is 
         terminated, the try/finally block cleans up.
     """
-    shm_fd = initialize_shared_memory()
-    active_clients_fd = initialize_active_clients_counter()
-    sem_server, sem_client = initialize_semaphores()
-    print("[Frequency Client] Done Initializing...\n\n")
-    
-    active_clients = increment_active_clients(active_clients_fd)
-    print(f"[Frequency Client] Active clients count: {active_clients}\n")
     
     try:
+        
+        shm_fd = initialize_shared_memory()
+        active_clients_fd = initialize_active_clients_counter()
+        sem_server, sem_client = initialize_semaphores()
+        print("[Frequency Client] Done Initializing...\n\n")
+        
+        active_clients = increment_active_clients(active_clients_fd)
+        print(f"[Frequency Client] Active clients count: {active_clients}\n")
+        
         # Map shared memory object as m
         with mmap.mmap(shm_fd, SHM_SIZE, mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE) as m:
             while True:    
@@ -142,7 +144,7 @@ def main():
                 print("[Frequency Client] Requesting Server Response...")
                 sem_server.release()
     except KeyboardInterrupt:
-        print("[Frequency Client] Keyboard interrupt received. Exiting...")
+        print("\n[Frequency Client] Keyboard interrupt received. Exiting...")
     finally:
         # Clean up
         active_clients = decrement_active_clients(active_clients_fd)
@@ -156,10 +158,20 @@ def main():
         # Special: No active clients remaining; unlink shared memory and semaphores 
         if active_clients == 0:
             print("[Frequency Client] No active clients remaining, cleaning up shared resources.")
-            posix_ipc.unlink_shared_memory(SHM_NAME)
-            posix_ipc.unlink_shared_memory(ACTIVE_CLIENTS_SHM_NAME)
-            posix_ipc.unlink_semaphore(SEM_SERVER)
-            posix_ipc.unlink_semaphore(SEM_CLIENT) 
+                        
+            resources = [
+                (SHM_NAME, posix_ipc.unlink_shared_memory),
+                (ACTIVE_CLIENTS_SHM_NAME, posix_ipc.unlink_shared_memory),
+                (SEM_SERVER, posix_ipc.unlink_semaphore),
+                (SEM_CLIENT, posix_ipc.unlink_semaphore)
+            ]
+            
+            for name, unlink_function in resources:
+                try:
+                    unlink_function(name)
+                    print(f"    {name} unlinked successfully.")
+                except posix_ipc.ExistentialError:
+                    print(f"    {name} has already been unlinked.")
 
 if __name__ == "__main__":
     main()
