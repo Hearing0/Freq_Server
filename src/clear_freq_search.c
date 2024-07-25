@@ -7,6 +7,7 @@
 #include <cblas.h>      // Matrix Multi library
 // #include <utils/phasing_utils.c>
 #include <string.h>
+#include <math.h>
 #include "../utils/ini_parser/ini.c"
 #include "../utils/read_config.c"
 
@@ -15,7 +16,6 @@
 #define PI 3.14159265358979323846
 double C = 3e8;//* pow(10, 8.0);
 bool verbose = true;
-bool test_samples = false;
 // #define RESTRICT_FILE = '/home/radar/repos/SuperDARN_MSI_ROS/linux/home/radar/ros.3.6/tables/superdarn/site/site.sps/restrict.dat.inst'
 
 
@@ -45,20 +45,7 @@ typedef struct {
     double *clear_freq_range;
 } freq_data;
 
-typedef struct {
-    double noise;
-    double tfreq;
-} clear_freq;
 
-/**
- * @brief  Reads intial Clear Freq parameters from a converted txt file (see utils/pickle_text_convert.py)
- * @note   
- * @param  *filename: Filepath of converted txt file
- * @param  *meta_data: Meta data for current sample batch
- * @param  **clear_freq_range: Range for the Clear Freq
- * @param  ***raw_samples: 14x2500 complex sample array
- * @retval None
- */
 void read_input_data(const char *filename, sample_meta_data *meta_data, double **clear_freq_range, fftw_complex ***raw_samples) {
     FILE *file = fopen(filename, "r");
     if (file == NULL) {
@@ -105,8 +92,7 @@ void read_input_data(const char *filename, sample_meta_data *meta_data, double *
         }
 
         // Raw Samples
-        if (strncmp(line, "raw_samples:", 12) == 0 && test_samples) {
-            printf("[Clear Freq Search] Aquiring test samples from pickle files...");
+        if (strncmp(line, "raw_samples:", 12) == 0) {
             // Allocate mem
             *raw_samples = (fftw_complex **)fftw_malloc(meta_data->num_antennas * sizeof(fftw_complex *));
             for (int i = 0; i < meta_data->num_antennas; i++) {
@@ -247,12 +233,12 @@ void fft_clrfreq_samples(fftw_complex *beamformed_samples, int num_samples, fftw
 }
 
 
-clear_freq find_clear_freq(fftw_complex *spectrum_power, double *freq_vector, double start_freq, double end_freq, double clear_bw, double *tfreq, double *noise) {
+void find_clear_freq(fftw_complex *spectrum_power, double *freq_vector, double start_freq, double end_freq, double clear_bw, double *tfreq, double *noise) {
 
 }
 
 // HACK apply efficient matrix multi via cblas_dgemm
-clear_freq calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_meta_data *meta_data, double *restricted_frequencies, double *clear_freq_range, double beam_angle, double smsep) {
+void calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_meta_data *meta_data, double *restricted_frequencies, double *clear_freq_range, double beam_angle, double smsep) {
     char *spectrum_file = "spectrum_output.csv";
     
     // Extract meta data
@@ -325,13 +311,14 @@ clear_freq calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_met
     // TODO: Verify answer
 
 
+
     // Spectral Estimation
     fft_clrfreq_samples(beamformed_samples, num_samples, spectrum_power);
 
     // Print the spectrum power
-    // for (int i = 0; i < num_samples; i++) {
-    //     printf("Frequency bin %d: %f + %fi\n", i, creal(spectrum_power[i]), cimag(spectrum_power[i]));
-    // }
+    for (int i = 0; i < num_samples; i++) {
+        printf("Frequency bin %d: %f + %fi\n", i, creal(spectrum_power[i]), cimag(spectrum_power[i]));
+    }
     
 
 
@@ -353,7 +340,7 @@ clear_freq calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_met
     // // Find clear frequency
     // double clear_bw = 2e6 / smsep;
     // double tfreq, noise;
-    // clear_freq cfreq = find_clear_freq(spectrum_power, freq_vector, clear_freq_range[0] * 1e3, clear_freq_range[1] * 1e3, clear_bw, &tfreq, &noise);
+    // find_clear_freq(spectrum_power, freq_vector, clear_freq_range[0] * 1e3, clear_freq_range[1] * 1e3, clear_bw, &tfreq, &noise);
 
     // // Output results
     // printf("Clear Frequency: %f, Noise: %f\n", tfreq, noise);
@@ -365,15 +352,9 @@ clear_freq calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_met
     fftw_free(spectrum_power);
     free(freq_vector);
 
-    // return cfreq;
 }
 
-void init() {
-    
-}
-
-// int main() {
-clear_freq clear_freq_search(fftw_complex **raw_samples) {
+int main() {
     // Stopwatch Start
     // double t1 = dsecnd();
 
@@ -383,7 +364,7 @@ clear_freq clear_freq_search(fftw_complex **raw_samples) {
 
     // Initial Data Variables
     sample_meta_data meta_data = {0};
-    // fftw_complex **raw_samples = NULL;
+    fftw_complex **raw_samples = NULL;
     int n_beams, beam_num;
     double beam_sep;
     freq_data freq_data;
@@ -417,17 +398,21 @@ clear_freq clear_freq_search(fftw_complex **raw_samples) {
     double smsep = 1 / (2 * 250 * pow(10, 3));      // ~4 ms
 
     // Find Clear Frequency
-    clear_freq cfreq = calc_clear_freq_on_raw_samples(
+    calc_clear_freq_on_raw_samples(
         raw_samples, &meta_data, restricted_frequencies, 
         clear_freq_range, beam_angle, smsep);
     
     // Free allocated memory
-    free(meta_data.antenna_list);  
+    for (int i = 0; i < meta_data.num_antennas; i++) {
+        fftw_free(raw_samples[i]);
+    }
+    fftw_free(raw_samples);
+    free(meta_data.antenna_list);
+    
 
     // Print processing time; Stopwatch End
     // double t2 = dsecnd();
     // printf("Time for Clear Freq Search: %lf", (t2-t1));
 
-    // return 1;
-    return cfreq;
+    return 0;
 };
