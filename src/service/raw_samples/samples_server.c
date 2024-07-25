@@ -14,14 +14,15 @@
 
 #define SAMPLES_NUM 2500
 #define ANTENNAS_NUM 14
+// #define SHM_SIZE (2 * SAMPLES_NUM * ANTENNAS_NUM * sizeof(int))  // Size for a 2x14x2500 array of integers
+#define SHM_SIZE (2 * SAMPLES_NUM * sizeof(int)) // TODO: Finish 2x2500 test
 #define SHM_NAME "/shared_memory"
-#define SHM_SIZE (2 * SAMPLES_NUM * ANTENNAS_NUM * sizeof(int))  // Size for a 2x2500 array of integers
 #define SEM_SERVER "/sem_server"
 #define SEM_CLIENT "/sem_client"
 
 
 // Initiate with flags:
-// -lrt -pthread
+// -lrt -pthread -lfftw3 -lm
 
 
 
@@ -168,6 +169,9 @@ int main() {
 
         printf("[Frequency Server] Processing client frequency data...\n");
         printf("[Frequency Server; from Client] ");
+        for (int i = 0; i < 20; i += 2) { 
+            printf("    %d + j%d\n", shm_ptr[i], shm_ptr[i+1]);
+        }
         // Store data into complex form
         for (int i = 0; i < ANTENNAS_NUM; i++) {    
             for (int j = 0; j < SAMPLES_NUM; j++) {

@@ -5,8 +5,8 @@ import time
 import posix_ipc
 
 # Shared Memory Object and Semaphores
-SHM_NAME = "/shared_memory"                 # For Data Transmission
 SHM_SIZE = 2 * 2500 * 4  # 2x2500 array of integers (each integer is 4 bytes)
+SHM_NAME = "/shared_memory"                 # For Data Transmission
 SEM_SERVER = "/sem_server"                  # For Synchronization 
 SEM_CLIENT = "/sem_client"
 ACTIVE_CLIENTS_SHM_NAME = "/active_clients" # For closing on exit of last client
