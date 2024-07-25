@@ -16,6 +16,8 @@
 #define PI 3.14159265358979323846
 double C = 3e8;//* pow(10, 8.0);
 bool verbose = true;
+int NUM_CLR_BANDS = 6;
+
 // #define RESTRICT_FILE = '/home/radar/repos/SuperDARN_MSI_ROS/linux/home/radar/ros.3.6/tables/superdarn/site/site.sps/restrict.dat.inst'
 
 
@@ -45,7 +47,27 @@ typedef struct {
     double *clear_freq_range;
 } freq_data;
 
+typedef struct {
+    double noise;
+    double tfreq;
+} clear_freq;
 
+typedef struct {
+    int band_start;
+    int band_end;
+    double noise;
+} clr_band;
+
+
+/**
+ * @brief  Reads intial Clear Freq parameters from a converted txt file (see utils/pickle_text_convert.py)
+ * @note   
+ * @param  *filename: Filepath of converted txt file
+ * @param  *meta_data: Meta data for current sample batch
+ * @param  **clear_freq_range: Range for the Clear Freq
+ * @param  ***raw_samples: 14x2500 complex sample array
+ * @retval None
+ */
 void read_input_data(const char *filename, sample_meta_data *meta_data, double **clear_freq_range, fftw_complex ***raw_samples) {
     FILE *file = fopen(filename, "r");
     if (file == NULL) {
@@ -169,7 +191,7 @@ void write_spectrum_to_csv(const char *filename, fftw_complex *spectrum, double 
 }
 
 /**
- * @brief  Calculates Beam Azimuth Angle.
+ * @brief  Calculates zBeam Azimuth Angle.
  * @note   By DF
  * @param  n_beams:     Total number of beams
  * @param  beam_num:    Beam number for calculating Beam Azimuth
@@ -233,8 +255,80 @@ void fft_clrfreq_samples(fftw_complex *beamformed_samples, int num_samples, fftw
 }
 
 
-void find_clear_freq(fftw_complex *spectrum_power, double *freq_vector, double start_freq, double end_freq, double clear_bw, double *tfreq, double *noise) {
+void find_clear_freq(fftw_complex *spectrum_power, double usrp_rf_rate, double start_freq, double end_freq, double clear_bw, clr_band *lowest_clr_bands) {
+    printf("Entered find_clearfreq()...");
+    int ClRFREQ_RES = 2e3;
+    if (clear_bw == 0) clear_bw = 40e3;
+    int band_size = (int) (round(clear_bw / ClRFREQ_RES));  
+    // TODO: Parse radar_config_constants.py for CLRFREQ_RES
 
+    // HACK: Check UHD version w/ prints for how frequency vs iterator works
+
+    clr_band selected_band;
+    clr_band *clr_bands;
+    int clr_band_size = 0;
+    int clr_band_max = 6;
+
+    // -20-30 dBm signal
+    // VLM -
+
+    // Try convolve with filter then find min of convolve
+    // gnu or intel scientific library
+
+
+
+    // for (int start_freq = 0; start_freq < sizeof(spectrum_power)/sizeof(fftw_complex); start_freq += band_size) {
+    //     double noise_sum = 0;
+
+    //     for (int i = start_freq; i < start_freq + band_size; i++) {
+    //         // Special: Band Out of Bounds
+    //         if (i >= sizeof(spectrum_power) / sizeof(fftw_complex)) break; // Check if exits both loops
+            
+
+    //         noise_sum += spectrum_power[i];
+    //     }
+
+    //     selected_band.band_start = start_freq;
+    //     selected_band.band_end = i;
+    //     selected_band.noise = noise_sum / (i - start_freq);
+
+    //     if (clr_band_size < clr_band_max) {
+
+
+    //     }
+    // }
+
+
+    // Scan for lowest noise clr_bands...
+    // for (int i = 0; i < NUM_CLR_BANDS; i++) {
+    //     clr_bands[i].band_start = i * band_size;
+    //     clr_bands[i].band_end = (i + 1) * band_size - 1;
+    //     clr_bands[i].noise = 0.0;
+
+    //     // Find the lowest noise in the band
+    //     for (int j = clr_bands[i].band_start; j <= clr_bands[i].band_end; j++) {
+    //         clr_bands[i].noise += cabs(spectrum_power[j]);
+    //     }
+
+    //     clr_bands[i].noise /= band_size; // Average noise
+    // }
+
+
+    // qsort(clr_bands, NUM_CLR_BANDS, sizeof(clr_band), compare_noise);
+
+}
+
+/**
+ * @brief  Compares noise between two different bands
+ * @note   
+ * @param  *a: Band 'a'
+ * @param  *b: Band 'b
+ * @retval 1 if bandA larger, -1 if bandB larger
+ */
+int compare_noise(const void *a, const void *b) {
+    clr_band *bandA = (clr_band *)a;
+    clr_band *bandB = (clr_band *)b;
+    return (bandA->noise > bandB->noise) - (bandA->noise < bandB->noise);
 }
 
 // HACK apply efficient matrix multi via cblas_dgemm
@@ -316,15 +410,17 @@ void calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_meta_data
     fft_clrfreq_samples(beamformed_samples, num_samples, spectrum_power);
 
     // Print the spectrum power
+    // for (int i = 0; i < num_samples; i++) {
+    //     printf("Frequency bin %d: %f + %fi\n", i, creal(spectrum_power[i]), cimag(spectrum_power[i]));
+    // }
+    
+
     for (int i = 0; i < num_samples; i++) {
         printf("Frequency bin %d: %f + %fi\n", i, creal(spectrum_power[i]), cimag(spectrum_power[i]));
     }
-    
-
 
     // Frequency Vector Calculation
     double delta_f = meta_data->usrp_rf_rate / num_samples;
-
     for (int i = 0; i < num_samples; i++) {
         freq_vector[i] = i * delta_f - (meta_data->usrp_rf_rate / 2) + meta_data->usrp_fcenter * 1000;
     }
@@ -334,16 +430,18 @@ void calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_meta_data
 
     /// END of Spectrum Calc
 
-    // // Mask restricted frequencies
-    // // 
+
+    // Mask restricted frequencies
+    // 
 
     // // Find clear frequency
     // double clear_bw = 2e6 / smsep;
     // double tfreq, noise;
-    // find_clear_freq(spectrum_power, freq_vector, clear_freq_range[0] * 1e3, clear_freq_range[1] * 1e3, clear_bw, &tfreq, &noise);
-
-    // // Output results
-    // printf("Clear Frequency: %f, Noise: %f\n", tfreq, noise);
+    double clear_bw = 2e6 / smsep;
+    clr_band *clear_freq_bands;
+    find_clear_freq(spectrum_power, meta_data->usrp_rf_rate, clear_freq_range[0], clear_freq_range[1], clear_bw, &clear_freq_bands);
+    // Output results
+    printf("Clear Frequency: %f, Noise: %f\n", (clear_freq_bands[0].band_end - clear_freq_bands[0].band_start)/2, clear_freq_bands[0].noise);
 
     printf("Finished Clear Freq!\n");
     
@@ -391,7 +489,7 @@ int main() {
 
 
     // XXX: Define other parameters
-    double restricted_frequencies[] = { 0,0 };
+    double restricted_frequencies[] = { 12e6, 13e6 };
     double clear_freq_range[] = { 25 * pow(10,3), 40 * pow(10,3) };
     // double beam_angle = calc_beam_angle(n_beams, beam_num, beam_sep);    // 
     double beam_angle = 0.08482300164692443;        // in radians
