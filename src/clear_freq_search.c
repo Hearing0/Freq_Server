@@ -100,7 +100,7 @@ void read_input_data(const char *filename, sample_meta_data *meta_data, double *
 
                 token = strtok(NULL, ",");
             }
-            meta_data->num_antennas = antenna_list_size;
+            meta_data->num_antennas = 2; //antenna_list_size;
             continue;
         }
 
@@ -254,7 +254,7 @@ clear_freq find_clear_freq(fftw_complex *spectrum_power, double *freq_vector, do
 // HACK apply efficient matrix multi via cblas_dgemm
 clear_freq calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_meta_data *meta_data, double *restricted_frequencies, double *clear_freq_range, double beam_angle, double smsep) {
     char *spectrum_file = "spectrum_output.csv";
-    
+   
     // Extract meta data
     int num_samples = meta_data->number_of_samples;
     int *antennas = meta_data->antenna_list;
@@ -322,7 +322,12 @@ clear_freq calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_met
     }
     printf("beamformed[2499]    = %f + %fi\n", creal(beamformed_samples[2499]), cimag(beamformed_samples[2499]));
     // beamformed[2499] =  70.466100 + -169.215264i
-    // TODO: Verify answer
+
+
+    // TODO: Plot usrp/antenna im and re separately (4 plots) 
+    //          to confirm that one of them is correctly all zeros for im
+    
+
 
 
     // Spectral Estimation
@@ -333,8 +338,6 @@ clear_freq calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_met
     //     printf("Frequency bin %d: %f + %fi\n", i, creal(spectrum_power[i]), cimag(spectrum_power[i]));
     // }
     
-
-
     // Frequency Vector Calculation
     double delta_f = meta_data->usrp_rf_rate / num_samples;
 
