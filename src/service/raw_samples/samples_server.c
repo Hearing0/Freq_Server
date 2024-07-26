@@ -15,7 +15,7 @@
 #define SAMPLES_NUM 2500
 #define ANTENNAS_NUM 14
 // #define SHM_SIZE (2 * SAMPLES_NUM * ANTENNAS_NUM * sizeof(int))  // Size for a 2x14x2500 array of integers
-#define SHM_SIZE (2 * SAMPLES_NUM * sizeof(int)) // TODO: Finish 2x2500 test
+#define SHM_SIZE (ANTENNAS_NUM * SAMPLES_NUM * sizeof(int)) // TODO: Finish 2x2500 test
 #define SHM_NAME "/shared_memory"
 #define SEM_SERVER "/sem_server"
 #define SEM_CLIENT "/sem_client"
@@ -174,15 +174,15 @@ int main() {
         }
         // Store data into complex form
         for (int i = 0; i < ANTENNAS_NUM; i++) {    
-            for (int j = 0; j < SAMPLES_NUM; j++) {
+            for (int j = 0; j < SAMPLES_NUM; j+=2) {
                 temp_samples[i][j] = shm_ptr[i * SAMPLES_NUM + j] + I * shm_ptr[i * SAMPLES_NUM + j + 1];
 
-                // // Print first complex of each antenna sample batch for verification
-                // if (j == 0) {
-                //     printf("shm[%d][0 + 1]       =   %d + i%d\n", i, (int)shm_ptr[i], (int)shm_ptr[i + 1]);   
-                //     printf("vs\n");
-                //     printf("temp_samples[%d][%d] =  %f + i%f\n\n", i, j, creal(temp_samples[i][j]), cimag(temp_samples[i][j]));
-                // }
+                // Print first complex of each antenna sample batch for verification
+                if (j < 20) {
+                    printf("shm[%d]      =   %d + i%d\n", i * SAMPLES_NUM + j, (int)shm_ptr[i * SAMPLES_NUM + j], (int)shm_ptr[i * SAMPLES_NUM + j + 1]);   
+                    printf("vs\n");
+                    printf("temp_samples[%d][%d] =  %f + i%f\n\n", i, j, creal(temp_samples[i][j]), cimag(temp_samples[i][j]));
+                }
             }
         }
         printf("\n");
