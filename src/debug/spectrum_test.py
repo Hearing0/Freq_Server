@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 # Load the spectrum data from CSV file
-data = pd.read_csv('spectrum_output.csv')
+data = pd.read_csv('utils/csv_dump/samples/spectrum_output.csv')
 
 # Print the DataFrame to check its content
 print(data.head())

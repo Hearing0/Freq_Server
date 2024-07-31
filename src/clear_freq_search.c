@@ -15,7 +15,7 @@
 #define PI 3.14159265358979323846
 double C = 3e8;//* pow(10, 8.0);
 bool verbose = true;
-bool test_samples = false;
+bool test_samples = true;
 // #define RESTRICT_FILE = '/home/radar/repos/SuperDARN_MSI_ROS/linux/home/radar/ros.3.6/tables/superdarn/site/site.sps/restrict.dat.inst'
 
 
@@ -53,10 +53,10 @@ typedef struct {
 /**
  * @brief  Reads intial Clear Freq parameters from a converted txt file (see utils/pickle_text_convert.py)
  * @note   
- * @param  *filename: Filepath of converted txt file
- * @param  *meta_data: Meta data for current sample batch
- * @param  **clear_freq_range: Range for the Clear Freq
- * @param  ***raw_samples: 14x2500 complex sample array
+ * @param  *filename:           Filepath of converted txt file
+ * @param  *meta_data:          Meta data for current sample batch
+ * @param  **clear_freq_range:  Range for the Clear Freq
+ * @param  ***raw_samples:      14x2500 complex sample array
  * @retval None
  */
 void read_input_data(const char *filename, sample_meta_data *meta_data, double **clear_freq_range, fftw_complex ***raw_samples) {
@@ -160,9 +160,10 @@ void load_beam_config(double *x_spacing, int *n_beams, double *beam_sep){
 /**
  * @brief  Writes Frequency Spectrum to csv file to be plotted in python.
  * @note   By DF
- * @param  *filename: 
- * @param  *spectrum: 
- * @param  num_samples: 
+ * @param  *filename:       The filepath for the saved CSV file
+ * @param  *spectrum:       Frequency Spectrum
+ * @param  *freq_vector:    Array for Frequency (steps of frequency per sample)
+ * @param  num_samples:     Number of samples collected per antenna
  * @retval None
  */
 void write_spectrum_to_csv(const char *filename, fftw_complex *spectrum, double *freq_vector, int num_samples) {
@@ -178,6 +179,33 @@ void write_spectrum_to_csv(const char *filename, fftw_complex *spectrum, double 
         double magnitude = sqrt(creal(spectrum[i]) * creal(spectrum[i]) + cimag(spectrum[i]) * cimag(spectrum[i]));
         fprintf(file, "%f,%f\n", freq_vector[i], magnitude);
     }
+
+    fclose(file);
+}
+
+/**
+ * @brief  Writes the Real/Imaginary magnitude to csv file to be plotted in python.
+ * @note   By DF
+ * @param  *filename:           The filepath for the saved CSV file
+ * @param  *raw_samples_mag:    Int array of the Real/Imaginary magnitude
+ * @param  *freq_vector:        Array for Frequency (steps of frequency per sample)
+ * @param  num_samples:         Number of samples collected per antenna
+ * @retval None
+ */
+void write_sample_mag_to_csv(const char *filename, int **raw_samples_mag, double *freq_vector, sample_meta_data *meta_data) {
+    FILE *file = fopen(filename, "w");
+    if (file == NULL) {
+        perror("Error opening file for writing");
+        exit(EXIT_FAILURE);
+    }
+
+    fprintf(file, "Samples,Power\n");
+
+
+    for (int j = 0; j < meta_data->num_antennas; j++)
+        for (int i = 0; i < meta_data->number_of_samples; i++) {
+            fprintf(file, "%f,%d\n", freq_vector[i], raw_samples_mag[j][i]);
+        }
 
     fclose(file);
 }
@@ -253,8 +281,12 @@ clear_freq find_clear_freq(fftw_complex *spectrum_power, double *freq_vector, do
 
 // HACK apply efficient matrix multi via cblas_dgemm
 clear_freq calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_meta_data *meta_data, double *restricted_frequencies, double *clear_freq_range, double beam_angle, double smsep) {
-    char *spectrum_file = "spectrum_output.csv";
-   
+    char *spectrum_file = "spectrum_output";
+    char *sample_re_file = "sample_re_output";
+    char *sample_im_file = "sample_im_output";
+    int **sample_re = NULL;
+    int **sample_im = NULL;
+    
     // Extract meta data
     int num_samples = meta_data->number_of_samples;
     int *antennas = meta_data->antenna_list;
@@ -270,6 +302,13 @@ clear_freq calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_met
     fftw_complex *beamformed_samples = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * num_samples);
     fftw_complex *spectrum_power = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * num_samples);
     double *freq_vector = (double*) malloc(sizeof(double) * num_samples);
+    sample_im = (int**) malloc(sizeof(int*) * meta_data->num_antennas);
+    sample_re = (int**) malloc(sizeof(int*) * meta_data->num_antennas);
+    for (int i = 0; i < meta_data->num_antennas; i++) {
+        sample_im[i] = (int *)malloc(meta_data->number_of_samples * sizeof(int));
+        sample_re[i] = (int *)malloc(meta_data->number_of_samples * sizeof(int));
+    }
+    
     
     if (!phasing_vector || !beamformed_samples || !spectrum_power || !freq_vector) {
         perror("Error allocating memory.\n");
@@ -316,6 +355,10 @@ clear_freq calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_met
             real_sum += real_sample * real_phase - imag_sample * imag_phase;
             imag_sum += real_sample * imag_phase + imag_sample * real_phase;
             // printf("beamformed_samples[%d]: %f + %fi\n", i, creal(beamformed_samples[i]), cimag(beamformed_samples[i]));
+
+        
+            sample_im[aidx][i] = cimag(raw_samples[aidx][i]);
+            sample_re[aidx][i] = creal(raw_samples[aidx][i]);
         }
 
         beamformed_samples[i] = real_sum + I * imag_sum;
@@ -345,7 +388,10 @@ clear_freq calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_met
         freq_vector[i] = i * delta_f - (meta_data->usrp_rf_rate / 2) + meta_data->usrp_fcenter * 1000;
     }
 
+    // Save data to csv
     write_spectrum_to_csv(spectrum_file, spectrum_power, freq_vector, num_samples);
+    write_sample_mag_to_csv(sample_im_file, sample_im, freq_vector, meta_data);
+    write_sample_mag_to_csv(sample_re_file, sample_re, freq_vector, meta_data);
 
 
     /// END of Spectrum Calc
