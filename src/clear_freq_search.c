@@ -16,6 +16,9 @@
 double C = 3e8;//* pow(10, 8.0);
 bool verbose = true;
 bool test_samples = true;
+int CLR_BANDS_MAX = 6;
+int CLRFREQ_RES = 2e3;                      // XXX: Is CLRFREQ_RES just delta_f? Both are 2kHz.
+
 // #define RESTRICT_FILE = '/home/radar/repos/SuperDARN_MSI_ROS/linux/home/radar/ros.3.6/tables/superdarn/site/site.sps/restrict.dat.inst'
 
 
@@ -44,6 +47,13 @@ typedef struct {
     double *restricted_freq;
     double *clear_freq_range;
 } freq_data;
+
+typedef struct {
+    int f_start;
+    int f_end;
+    double avgNoise;
+} freq_band;
+
 
 typedef struct {
     double noise;
@@ -258,10 +268,11 @@ double complex rad_to_rect(double phase) {
     return cexp(I * phase);
 }
 
+// HACK Check time vs regular fft; plans are expensive to create.
 /**
  * @brief  Fast Fourier Transform (FFT) conversion from beamformed_samples 
  * * into a spectrum.
- * @note   // HACK Check time vs regular fft; plans are expensive to create. 
+ * @note    By DF
  * @param  *beamformed_samples: Array of samples that have already been 
  * * beamformed
  * @param  number_of_samples: Number of samples
@@ -274,10 +285,139 @@ void fft_clrfreq_samples(fftw_complex *beamformed_samples, int num_samples, fftw
     fftw_destroy_plan(plan);
 }
 
-
-clear_freq find_clear_freq(fftw_complex *spectrum_power, double *freq_vector, double start_freq, double end_freq, double clear_bw, double *tfreq, double *noise) {
-
+/**
+ * @brief  Convolves 'u' array with 'v' array.
+ * @note   
+ * @param  u: 1st Array of integers
+ * @param  u_size: Size of array 'u' 
+ * @param  v: 2nd Array of integers
+ * @param  v_size: Size of array 'v'
+ * @retval Returns Integer array of the resulting convolution
+ */
+int* convolve(int* u, int u_size, int* v, int v_size) {
+    int i, j;
+    int* result;
+    for (i = 0; i < u_size; i++) {
+        result[i] = 0;
+        for (j = 0; j < v_size; j++) {
+            if (i - j >= 0) result[i] += u[i - j] * v[j];
+        }
+    }
+    return result;
 }
+
+// TODO: Parse radar_config_constants.py for CLRFREQ_RES
+// TODO: Test with -20dBm 10MHz signal
+/**
+ * @brief  Processes Spectrum data to find the lowest noise frequency bands 
+ * * (returned as clr_freq_bands). Steps are as follows: 
+ * * (1) Setup Freq Search,
+ * * (2) Scan Search Range with Bandpass Filter by convolution, 
+ * * (3) Find Noise of BPF's Range and compare w/ current Clear Freq Bands, and
+ * * (4) If appropriate spot found, insert BPF's Range as New Clear Freq Band.
+ * @note   By DF
+ * @param  *spectrum_power: Spectrum Data (Power per Sample)
+ * @param  meta_data: Misc info on operating Radar parameters  
+ * @param  delta_f: Frequency step per Sample 
+ * @param  f_start: Clear Freq Search Bound start
+ * @param  f_end: Clear Freq Search Bound end
+ * @param  clear_bw: Bandwidth of the Clear Frequency Bands. If 0, default to 40kHz.
+ * @param  *lowest_freq_bands: Passed by reference; Overwritten with an array of the 
+ * * lowest noise freq_bands.  
+ * @retval None
+ */
+void find_clear_freqs(fftw_complex *spectrum_power, sample_meta_data meta_data, double delta_f, double f_start, double f_end, double clear_bw, freq_band *clr_freq_bands) {
+    printf("Entered find_clearfreq()...");
+    if (clear_bw == 0) clear_bw = 40e3;
+    int clear_sample_bw = (int) (round(clear_bw / CLRFREQ_RES));  
+
+    // Define Clear Freq Search Range
+    int start_sample = (int) (f_start) % (int) (delta_f);  
+    int end_sample = (int) (f_end) % (int) (delta_f);
+
+    // Trim Spectrum Data to Search Range (Used for convolving)
+    int* search_band;
+    for (int i = start_sample; i < end_sample; i++) {
+        search_band[i] = spectrum_power[i];
+    }
+
+    // Preconfig Clear Freq Bands
+    freq_band scan_band;
+    freq_band *clr_bands;
+    for (int i = 0; i < CLR_BANDS_MAX; i++){
+        clr_bands[i].f_start = start_sample * delta_f - (meta_data.usrp_rf_rate / 2) + meta_data.usrp_fcenter * 1000;
+        clr_bands[i].f_end = end_sample * delta_f - (meta_data.usrp_rf_rate / 2) + meta_data.usrp_fcenter * 1000;
+        clr_bands[i].avgNoise = RAND_MAX;
+    }
+
+    // Try convolve with filter then find min of convolve
+    // gnu or intel scientific library
+
+    // HACK: Check UHD version w/ prints for how frequency vs iterator works
+    // Scan Bandpass Filter (BPF) w/ Search range to find Clear Freq Band 
+    for (int i = (int) f_start; i < f_end; i++) {
+        // Initialize BPF
+        int bpf_start = i;
+        int bpf_end = i + clear_sample_bw; 
+        int* bpf_result;
+        for (int band_i = 0; band_i < bpf_end; i++)
+        {
+            bpf_result[i] = 1;
+        }
+
+        // Convolve BPF with Search Range
+        bpf_result = convolve(search_band, end_sample - start_sample, bpf_result, clear_sample_bw);
+
+        // Pack Convolve Results and resulting avgNoise into a freq band
+        scan_band.f_start = bpf_start;
+        scan_band.f_end = bpf_end;
+        for (int i = 0; i < end_sample - start_sample; i++) scan_band.avgNoise += bpf_result[i];
+        scan_band.avgNoise = scan_band.avgNoise / (end_sample - start_sample);
+
+        /// Store New Band into Lowest Non-Intersecting Noise Bands
+        // Find Insertion spot in clr_freq_bands
+        int last_intersect_band_idx;
+        int insert_idx;
+        for (int j = CLR_BANDS_MAX - 1; j >= 0 ; j--) {
+            // Special: Replace Greatest Non-Intersecting Band 
+            if ( last_intersect_band_idx == NULL && 
+                    (clr_bands[j].f_start < scan_band.f_start < clr_bands[j].f_end || 
+                     clr_bands[j].f_start < scan_band.f_end < clr_bands[j].f_end))
+                last_intersect_band_idx = j;
+            
+            // Update Insert Index; maintaining ascending order 
+            if (scan_band.avgNoise < clr_bands[j].avgNoise) {
+                insert_idx = j;
+            }
+            // Continue to find 
+        }
+
+        // Intersection Found; ...
+        // Replace greatest old band iff new band > old band
+        if (last_intersect_band_idx != NULL) {
+            if (scan_band.avgNoise < clr_bands[last_intersect_band_idx].avgNoise){
+                clr_bands[insert_idx] = scan_band;
+                // Overwrite Old Intersecting band
+                for (int i = last_intersect_band_idx - 1; i >= 0; i--)
+                {
+                    clr_bands[i + 1] = clr_bands[i];
+                }            
+            }
+        } 
+        // Insertion Point Found; Insert new band
+        else if (insert_idx != NULL) {
+            clr_bands[insert_idx] = scan_band;
+            for (int i = CLR_BANDS_MAX - 1; i >= 0; i--)
+            {
+                clr_bands[i + 1] = clr_bands[i];
+            }
+        }
+    } // end of Spectrum Scan w/ BPF
+
+    // Return Result
+    clr_freq_bands = clr_bands;    
+}
+
 
 // HACK apply efficient matrix multi via cblas_dgemm
 clear_freq calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_meta_data *meta_data, double *restricted_frequencies, double *clear_freq_range, double beam_angle, double smsep) {
@@ -315,6 +455,7 @@ clear_freq calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_met
         exit(EXIT_FAILURE);
     }
 
+
     // Calculate and Apply phasing vector
     float phase_increment = calc_phase_increment(beam_angle, (clear_freq_range[0] + clear_freq_range[1]) / 2, meta_data->x_spacing);
     printf("phase_increment: %lf\n", phase_increment);
@@ -333,8 +474,8 @@ clear_freq calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_met
         }
     }
     printf("antenna[13]: %d\n", antennas[13]);
-    // Antennas[13] = 18
     printf("phasing_vector[13]: %f + %fi\n", creal(phasing_vector[13]), cimag(phasing_vector[13]));
+    // Antennas[13] = 18
     // phasing_vector[13] = 0.999912 + 0.013288i
 
     // Apply beamforming
@@ -356,11 +497,9 @@ clear_freq calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_met
             imag_sum += real_sample * imag_phase + imag_sample * real_phase;
             // printf("beamformed_samples[%d]: %f + %fi\n", i, creal(beamformed_samples[i]), cimag(beamformed_samples[i]));
 
-        
             sample_im[aidx][i] = cimag(raw_samples[aidx][i]);
             sample_re[aidx][i] = creal(raw_samples[aidx][i]);
         }
-
         beamformed_samples[i] = real_sum + I * imag_sum;
     }
     printf("beamformed[2499]    = %f + %fi\n", creal(beamformed_samples[2499]), cimag(beamformed_samples[2499]));
@@ -369,9 +508,9 @@ clear_freq calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_met
 
     // TODO: Plot usrp/antenna im and re separately (4 plots) 
     //          to confirm that one of them is correctly all zeros for im
-    
 
-
+    // TODO: Spectrum Averaging
+    //          Take block of Samples per antenna, average them before FFT, FFT?,  
 
     // Spectral Estimation
     fft_clrfreq_samples(beamformed_samples, num_samples, spectrum_power);
@@ -383,10 +522,11 @@ clear_freq calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_met
     
     // Frequency Vector Calculation
     double delta_f = meta_data->usrp_rf_rate / num_samples;
-
     for (int i = 0; i < num_samples; i++) {
         freq_vector[i] = i * delta_f - (meta_data->usrp_rf_rate / 2) + meta_data->usrp_fcenter * 1000;
     }
+
+    printf("delta_f: %f\nnum_samples: %d\nfcenter: %d", delta_f, num_samples, meta_data->usrp_fcenter * 1000);
 
     // Save data to csv
     write_spectrum_to_csv(spectrum_file, spectrum_power, freq_vector, num_samples);
@@ -396,18 +536,19 @@ clear_freq calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_met
 
     /// END of Spectrum Calc
 
-    // // Mask restricted frequencies
-    // // 
+    // Mask restricted frequencies
 
-    // // Find clear frequency
-    // double clear_bw = 2e6 / smsep;
-    // double tfreq, noise;
-    // clear_freq cfreq = find_clear_freq(spectrum_power, freq_vector, clear_freq_range[0] * 1e3, clear_freq_range[1] * 1e3, clear_bw, &tfreq, &noise);
 
-    // // Output results
-    // printf("Clear Frequency: %f, Noise: %f\n", tfreq, noise);
+    // Find clear frequency
+    double clear_bw = 2e6 / smsep;
+    freq_band* clr_band;
+    find_clear_freqs(spectrum_power, *meta_data, delta_f, clear_freq_range[0] * 1e3, clear_freq_range[1] * 1e3, clear_bw, &clr_band);
 
-    printf("Finished Clear Freq!\n");
+    // Output results
+    for (int i = 0; i < CLR_BANDS_MAX; i++)
+        printf("Clear Freq Band[%d]: | %fMHz -- Noise: %f -- %fMHz |\n", clr_band[i].f_start, clr_band[i].avgNoise);
+
+    printf("Finished Clear Freq Search!\n");
     
     fftw_free(phasing_vector);
     fftw_free(beamformed_samples);
@@ -461,13 +602,13 @@ clear_freq clear_freq_search(fftw_complex **raw_samples) {
     // XXX: Define other parameters
     double restricted_frequencies[] = { 0,0 };
     double clear_freq_range[] = { 25 * pow(10,3), 40 * pow(10,3) };
-    // double beam_angle = calc_beam_angle(n_beams, beam_num, beam_sep);    // 
+    // double beam_angle = calc_beam_angle(n_beams, beam_num, beam_sep);  
     double beam_angle = 0.08482300164692443;        // in radians
     double smsep = 1 / (2 * 250 * pow(10, 3));      // ~4 ms
 
     // Find Clear Frequency
     clear_freq cfreq = calc_clear_freq_on_raw_samples(
-        raw_samples, &meta_data, restricted_frequencies, 
+        &raw_samples, &meta_data, restricted_frequencies, 
         clear_freq_range, beam_angle, smsep);
     
     // Free allocated memory
