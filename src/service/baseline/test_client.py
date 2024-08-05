@@ -134,7 +134,7 @@ def main():
                 print("[Frequency Client] Done reading data from Shared Memory...")
                     
                 # Write new data to Shared Memory Object
-                time.sleep(2)           # TODO: Remove; Simulates processing time
+                time.sleep(2)           # Simulates processing time
                 m.seek(0)
                 message = "Frequency data from Python Client."
                 m.write(message.encode() + b'\x00')

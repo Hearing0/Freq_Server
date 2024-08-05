@@ -1,9 +1,12 @@
-import matplotlib
-# matplotlib.use('Agg')
-
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
+
+
+# Run script
+# python3 src/debug/sample_plot.py 
+
+
 
 base_filepath = 'utils/csv_dump/samples/'
 files = ['sample_im_output.csv', 'sample_re_output.csv']

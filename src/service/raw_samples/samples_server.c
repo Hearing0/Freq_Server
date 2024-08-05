@@ -167,6 +167,7 @@ int main() {
         printf("[Frequency Server] Awaiting client response...\n");
         sem_wait(sem_server);   
 
+        // TODO: Add Param Buffer for meta data and clear freq range
         printf("[Frequency Server] Processing client frequency data...\n");
         printf("[Frequency Server; from Client] ");
         for (int i = 0; i < 20; i += 2) { 
