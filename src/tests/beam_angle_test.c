@@ -25,5 +25,12 @@ int main() {
     // Example usage of calc_beam_angle
     double angle = calc_beam_angle(16, 3, 3.24);
     printf("Calculated beam angle: %lf radians\n", angle);
+
+    printf("\n\nTesting\n");
+
+    int test = -1;
+    if (test > -1) printf("test exists!\n");
+    else if (test == -1) printf("test doesn't exist.\n");
+
     return 0;
 }
