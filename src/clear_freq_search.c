@@ -9,6 +9,12 @@
 #include <string.h>
 #include "../utils/ini_parser/ini.c"
 #include "../utils/read_config.c"
+#include <time.h>
+
+
+#ifndef CLK_TCK
+#define CLK_TCK 60
+#endif
 
 
 // Define Constants
@@ -604,7 +610,11 @@ void calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_meta_data
     // Find clear frequency
     double clear_bw = 2e6 / smsep;
     clear_bw = 0;
+    clock_t t1, t2;
+    t1 = clock();
     find_clear_freqs(spectrum_power, *meta_data, delta_f, clear_freq_range[0], clear_freq_range[1], clear_bw, clr_bands);
+    t2 = clock();
+    printf("clear_freq_search (mili sec): %lf\n", ((double) (t2 - t1)) / (CLOCKS_PER_SEC));
 
     // Debug: Output results
     for (int i = 0; i < CLR_BANDS_MAX; i++)
@@ -622,8 +632,6 @@ void calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_meta_data
 
 // int main() {
 clear_freq clear_freq_search(fftw_complex **raw_samples, freq_band *clr_bands) {
-    // Stopwatch Start
-    // double t1 = dsecnd();
 
     // HACK: Setup file_path environment variable
     const char *input_file_path = "../Freq_Server/utils/clear_freq_input/clrfreq_dump.1.txt";
@@ -664,16 +672,21 @@ clear_freq clear_freq_search(fftw_complex **raw_samples, freq_band *clr_bands) {
     double beam_angle = 0.08482300164692443;        // in radians
     double smsep = .004; // 1 / (2 * 250 * pow(10, 3));      // ~4 ms
 
+    // Stopwatch Start
+    double t1,t2;
+    t1 = clock();
+
     // Find Clear Frequency Bands
     calc_clear_freq_on_raw_samples(
         raw_samples, &meta_data, restricted_frequencies, 
         clear_freq_range, beam_angle, smsep, clr_bands);
     
+    // Print processing time; Stopwatch End
+    t2 = clock();
+    printf("clear_freq_search (mili sec): %lf", ((double) (t2 - t1)) / (CLOCKS_PER_SEC * 1000));
+    
     // Free allocated memory
     free(meta_data.antenna_list);  
 
-    // Print processing time; Stopwatch End
-    // double t2 = dsecnd();
-    // printf("Time for Clear Freq Search: %lf", (t2-t1));
 
 };
