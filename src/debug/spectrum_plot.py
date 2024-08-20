@@ -6,7 +6,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 # Load the spectrum data from CSV file
-data = pd.read_csv('utils/csv_dump/samples/spectrum_output.csv')
+# data = pd.read_csv('utils/csv_dump/spectrum_output.csv')
+data = pd.read_csv('utils/csv_dump/spectrum_output.avg1.csv')
+# data = pd.read_csv('utils/csv_dump/spectrum_output.avg2.csv')
+
+
 
 # Print the DataFrame to check its content
 print(data.head())
@@ -34,4 +38,6 @@ plt.yticks(np.arange(0, 11e3, 2000))
 
 
 # Display the plot
-plt.savefig("plot.png")
+# plt.savefig("plot.png")
+plt.savefig("plot.avg1.png")
+# plt.savefig("plot.avg2.png")
