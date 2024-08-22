@@ -199,6 +199,21 @@ void write_spectrum_to_csv(char *filename, fftw_complex *spectrum, double *freq_
     fclose(file);
 }
 
+void write_test_to_csv(char *filename, double *spectrum, double *freq_vector, int num_samples) {
+    FILE *file = fopen(filename, "w");
+    if (file == NULL) {
+        perror("Error opening file for writing");
+        exit(EXIT_FAILURE);
+    }
+    fprintf(file, "Frequency,Power\n");
+    for (int i = 0; i < num_samples; i++) {
+        // double magnitude = sqrt(creal(spectrum[i]) * creal(spectrum[i]) + cimag(spectrum[i]) * cimag(spectrum[i]));
+        fprintf(file, "%f,%f\n", freq_vector[i], spectrum[i]);//magnitude);
+    }
+
+    fclose(file);
+}
+
 /**
  * @brief  Writes the Real/Imaginary magnitude to csv file to be plotted in python.
  * @note   By DF
@@ -271,7 +286,6 @@ double complex rad_to_rect(double phase) {
     return cexp(I * phase);
 }
 
-// HACK Check time vs regular fft; plans are expensive to create.
 /**
  * @brief  Fast Fourier Transform (FFT) conversion from beamformed_samples 
  * * into a spectrum.
@@ -307,12 +321,11 @@ void convolve(double* u, int u_size, int* v, int v_size, double* result) {
     }
 }
 
-// TODO: Reformat finding Insertion
-// TODO: Test by Compile
-// TODO: Parse radar_config_constants.py for CLRFREQ_RES
-// TODO: Strike balance b/w speed and time using clear_sample_bw
+// TODO: Reconfigure logic to find most probable signal
 // TODO: Test with -20dBm 10MHz signal
 // TODO: Compare Time Complexity w/ Py Version
+// TODO: Parse radar_config_constants.py for CLRFREQ_RES
+// TODO: Strike balance b/w speed and time using clear_sample_bw
 // TODO: Obtain f_start, f_end from RESTRICT file
 // Try convolve with filter then find min of convolve
 //      gnu or intel scientific library
@@ -574,85 +587,67 @@ void calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_meta_data
     }
 
 
+    /// Spectrum Averaging; delinate Transmitters and filter out noise
     // Spectrum Avg (4 fft into avg)
     clock_t t_avg_curr, t_avg;
     int avg_freq_ratio = 4;     //(int) delta_f / CLRFREQ_RES;
     int num_avg_samples = num_samples / avg_freq_ratio; 
 
 
-    // /// Computes one avg in ~1.407 s
-    // printf("=----------------=\n");
-    // printf("starting avg...\n");
+    /// Computes one avg in ~1.100 s
+    printf("=----------------=\n");
+    printf("starting avg...\n");
 
-    // // Avg version of freq vector
-    // double *freq_vector_avg = (double*) malloc(sizeof(double) * num_avg_samples);
-    // double delta_f_avg = delta_f * avg_freq_ratio;
-    // for (int i = 0; i < num_avg_samples; i++) freq_vector_avg[i] = i * delta_f_avg + f_start;
+    // Avg version of freq vector
+    double *freq_vector_avg = (double*) malloc(sizeof(double) * num_avg_samples);
+    double delta_f_avg = delta_f * avg_freq_ratio;
+    for (int i = 0; i < num_avg_samples; i++) freq_vector_avg[i] = i * delta_f_avg + f_start;
     
-    // fftw_complex *avg_spect_samples_v1 = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * num_avg_samples);
-    // fftw_complex *samples_1 = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * num_avg_samples);
-    // fftw_complex *samples_2 = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * num_avg_samples);
-    // fftw_complex *samples_3 = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * num_avg_samples);
-    // fftw_complex *samples_4 = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * num_avg_samples);
-    // printf("num_avg_sample: %d\navg_freq_ratio: %d\n", num_avg_samples, avg_freq_ratio);
+    double *avg_spect_samples_v1 = (double*) fftw_malloc(sizeof(double) * num_avg_samples);
+    fftw_complex *samples = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * num_samples);
+    printf("num_avg_sample: %d\navg_freq_ratio: %d\n", num_avg_samples, avg_freq_ratio);
+
     
-    // // Find avg compute time of 100 fft avgs 
-    // for (int i = 0; i < 100; i++) {
-    //     t_avg_curr = clock();
-    //     for (int j = 0; j < num_avg_samples; j++) {
-    //         for (int k = j * avg_freq_ratio; k < (j + 1) * avg_freq_ratio; k++) {
-    //             if (k < num_samples) { 
-    //                 // if (i % 100 == 0 && k % 100 == 0 && verbose) printf("[Spect Avg] beamformed_samp[%d]: %f + i%f\n", k, creal(beamformed_samples[k]), cimag(beamformed_samples[k]));
-    //                 switch (k % avg_freq_ratio) {
-    //                     case 0:
-    //                         samples_1[j] = beamformed_samples[k];
-    //                         break;
-    //                     case 1:
-    //                         samples_2[j] = beamformed_samples[k];
-    //                         break;
-    //                     case 2:
-    //                         samples_3[j] = beamformed_samples[k];
-    //                         break;
-    //                     case 3:
-    //                         samples_4[j] = beamformed_samples[k];
-    //                         break;
-    //                     default:
-    //                         break;
-    //                 }
-    //             }
-    //         }
-    //     }
 
-    //     fft_clrfreq_samples(samples_1, num_avg_samples, samples_1);
-    //     fft_clrfreq_samples(samples_2, num_avg_samples, samples_2);
-    //     fft_clrfreq_samples(samples_3, num_avg_samples, samples_3);
-    //     fft_clrfreq_samples(samples_4, num_avg_samples, samples_4);
 
+    // TODO: Optimize plan usage; Long-term plan storage (How???)
+    fftw_plan plan = fftw_plan_dft_1d(num_samples, samples, spectrum_power, FFTW_FORWARD, FFTW_ESTIMATE);
+
+    // Find avg compute time of 100 fft avgs 
+    for (int i = 0; i < 100; i++) {
+        t_avg_curr = clock();
         
-    //     for (int i = 0; i < num_avg_samples; i++)
-    //     {
-    //         avg_spect_samples_v1[i] += samples_1[i] + samples_2[i] + samples_3[i] + samples_4[i];
-    //         avg_spect_samples_v1[i] /= avg_freq_ratio;
-    //     }
+        for (int j = 0; j < num_samples; j++) samples[j] = beamformed_samples[j];
+        
+        fftw_execute(plan);
+        fft_clrfreq_samples(samples, num_samples, samples);
 
-    //     t_avg += clock() - t_avg_curr;
-    //     if (i % 20 == 0) {
-    //         // double cur_avg = t_avg / i;
-    //         printf("avg_spect_samples_v1[%d][0]: %f + i%f\n", i, creal(avg_spect_samples_v1[0]), cimag(avg_spect_samples_v1[0]));
-    //         // printf("avg fft v1 (ms): %lf\n", (cur_avg) / (CLOCKS_PER_SEC * 1000 )); 
-    //     }
-    //     // Store spectrum to plot
-    //     if (i == 0) write_spectrum_to_csv("../Freq_Server/utils/csv_dump/spectrum_output.avg1.csv", avg_spect_samples_v1, freq_vector_avg, num_avg_samples);
-    // }
+        for (int k = 0; k < num_avg_samples; k++) {
+            for (int j = 1; j < (1 + avg_freq_ratio); j++) {
+                double re = creal(samples[j]) * creal(samples[j]);
+                double im = cimag(samples[j]) * cimag(samples[j]);
+                if (j == 1) avg_spect_samples_v1[k] = sqrt(re + im);
+                else avg_spect_samples_v1[k] += sqrt(re + im);
+            }
+            avg_spect_samples_v1[k] /= avg_freq_ratio;
+        }
+
+        t_avg += clock() - t_avg_curr;
+        if (i % 20 == 0) {
+            // double cur_avg = t_avg / i;
+            printf("avg_spect_samples_v1[%d][0]: %f\n", i, avg_spect_samples_v1[0]);
+            // printf("avg fft v1 (ms): %lf\n", (cur_avg) / (CLOCKS_PER_SEC * 1000 )); 
+        }
+        // Store spectrum to plot
+        if (i == 0) write_test_to_csv("../Freq_Server/utils/csv_dump/spectrum_output.avg1.csv", avg_spect_samples_v1, freq_vector_avg, num_avg_samples);
+    }
     // t_avg /= 100;
-    // printf("====> avg fft v1 (ms): %lf\n", ((double) (t_avg)) / (CLOCKS_PER_SEC * 1000));
+    printf("====> avg fft v1 (ms): %lf\n", ((double) (t_avg)) / (CLOCKS_PER_SEC * 1000));
 
 
-    // fftw_free(samples_1);
-    // fftw_free(samples_2);
-    // fftw_free(samples_3);
-    // fftw_free(samples_4);
-    // fftw_free(avg_spect_samples_v1);
+    fftw_destroy_plan(plan);
+    fftw_free(samples);
+    fftw_free(avg_spect_samples_v1);
 
 
 
@@ -670,66 +665,6 @@ void calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_meta_data
     // TODO: Plot usrp/antenna im and re separately (4 plots) 
     //          to confirm that one of them is correctly all zeros for im
 
-
-
-
-    /// Spectrum Averaging; delinate Transmitters and filter out noise
-    // TODO: test (4 fft then avg fft results) vs ( 1 large fft then avg spectrum data into 1/4)
-    // int avg_freq_ratio = 4;     //(int) delta_f / CLRFREQ_RES;
-    // int num_avg_samples = num_samples / avg_freq_ratio; 
-
-
-    
-    // printf("=----------------=\n");
-    // printf("starting avg...\n");
-
-    // // Avg version of freq vector
-    // double *freq_vector_avg = (double*) malloc(sizeof(double) * num_avg_samples);
-    // double delta_f_avg = delta_f * avg_freq_ratio;
-    // for (int i = 0; i < num_avg_samples; i++) freq_vector_avg[i] = i * delta_f_avg + f_start;
-
-
-    // printf("Number of averages: %d\n", num_avg_samples);
-    // fftw_complex *samples_1 = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * num_samples);
-    // fftw_complex *avg_spect_samples_v2 = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * num_avg_samples);
-
-    // // Conduct 100 avgs
-    // for (int k = 0; k < 100; k++) {
-    //     t_avg_curr = clock();
-
-    //     // Copy samples; TODO: Check if it avoids core dump
-    //     samples_1 = beamformed_samples;
-    //     for (int i = 0; i < num_samples; i++) samples_1[i] = beamformed_samples[i];
-
-    //     // FFT copied samples
-    //     fft_clrfreq_samples(samples_1, num_samples, samples_1);
-
-    //     // Avg: Fill avg_spect_sample
-    //     for (int j = 0; j < num_avg_samples; j++) {
-    //         // Avg: Sum into one element then divide
-    //         for (int i = j * avg_freq_ratio; i < (j + 1) * avg_freq_ratio; i++) {
-    //             if (i < num_samples) avg_spect_samples_v2[j] += samples_1[i];
-    //         }        
-    //         avg_spect_samples_v2[j] /= avg_freq_ratio;
-    //     }
-    //     t_avg += clock() - t_avg_curr;
-
-    //     // Store spectrum to plot
-    //     if (k == 0) write_spectrum_to_csv("../Freq_Server/utils/csv_dump/spectrum_output.avg2.csv", avg_spect_samples_v2, freq_vector_avg, num_avg_samples);
-    // }
-    // // Print total time
-    // t_avg /= 100;
-    // printf("====> avg fft v2 (ms): %lf\n", ((double) (t_avg)) / (CLOCKS_PER_SEC * 1000));
-
-    // fftw_free(samples_1);
-    // fftw_free(avg_spect_samples_v2);
-
-
-    // // Display Spectrum Power
-    // for (int i = 0; i < meta_data.number_of_samples; i++) {
-    //     printf("Frequency bin %d: %f + %fi\n", i, creal(spectrum_power[i]), cimag(spectrum_power[i]));
-    // }
-
     printf("delta_f: %f\nnum_samples: %d\nfcenter: %d\n", delta_f, num_samples, meta_data->usrp_fcenter * 1000);
 
     // Save data to csv
@@ -741,6 +676,7 @@ void calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_meta_data
 
 
     // Mask restricted frequencies
+    
 
     // int clr_search_sample_bw = (int) (round(clear_freq_range[1] / delta_f) - round(clear_freq_range[0] / delta_f));
     int clear_sample_start = (int) round((clear_freq_range[0] - f_start) / delta_f);
