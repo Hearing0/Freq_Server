@@ -610,12 +610,12 @@ void calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_meta_data
     
 
 
-    // TODO: Optimize plan usage; Long-term plan storage (How???)
+    // TODO: Optimize plan usage; Long-term plan storage (create and store in samples_server.c)
     fftw_plan plan = fftw_plan_dft_1d(num_samples, samples, spectrum_power, FFTW_FORWARD, FFTW_ESTIMATE);
 
     // Find avg compute time of 100 fft avgs 
+    t_avg_curr = clock();
     for (int i = 0; i < 100; i++) {
-        t_avg_curr = clock();
         
         for (int j = 0; j < num_samples; j++) samples[j] = beamformed_samples[j];
         
@@ -632,17 +632,16 @@ void calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_meta_data
             avg_spect_samples_v1[k] /= avg_freq_ratio;
         }
 
-        t_avg += clock() - t_avg_curr;
         if (i % 20 == 0) {
-            // double cur_avg = t_avg / i;
             printf("avg_spect_samples_v1[%d][0]: %f\n", i, avg_spect_samples_v1[0]);
-            // printf("avg fft v1 (ms): %lf\n", (cur_avg) / (CLOCKS_PER_SEC * 1000 )); 
         }
-        // Store spectrum to plot
+
+        // Store spectrum to verify plotting
         if (i == 0) write_test_to_csv("../Freq_Server/utils/csv_dump/spectrum_output.avg1.csv", avg_spect_samples_v1, freq_vector_avg, num_avg_samples);
     }
-    // t_avg /= 100;
-    printf("====> avg fft v1 (ms): %lf\n", ((double) (t_avg)) / (CLOCKS_PER_SEC * 1000));
+    t_avg = clock() - t_avg_curr;
+    t_avg /= 100;
+    printf("====> avg fft v1 (s): %lf\n", ((double) (t_avg)) / (CLOCKS_PER_SEC));
 
 
     fftw_destroy_plan(plan);
