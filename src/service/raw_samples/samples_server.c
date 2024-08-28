@@ -150,8 +150,13 @@ int main() {
             exit(EXIT_FAILURE);
         }
     }
+    freq_band *clr_bands = NULL;
+    clr_bands = (freq_band *)malloc(CLR_BANDS_MAX * sizeof(freq_band));
+    if (clr_bands == NULL) {
+        perror("Error allocating memory for clr_bands elements");
+        exit(EXIT_FAILURE);
+    }
             
-
     // Continuously Send and Receive messages via Shared Memory
     while (1) {
         // Write data to Shared Memory
@@ -170,26 +175,26 @@ int main() {
         // TODO: Add Param Buffer for meta data and clear freq range
         printf("[Frequency Server] Processing client frequency data...\n");
         printf("[Frequency Server; from Client] ");
-        for (int i = 0; i < 20; i += 2) { 
-            printf("    %d + j%d\n", shm_ptr[i], shm_ptr[i+1]);
-        }
+        // for (int i = 0; i < 20; i += 2) { 
+        //     printf("    %d + j%d\n", shm_ptr[i], shm_ptr[i+1]);
+        // }
         // Store data into complex form
         for (int i = 0; i < ANTENNAS_NUM; i++) {    
             for (int j = 0; j < SAMPLES_NUM; j+=2) {
                 temp_samples[i][j] = shm_ptr[i * SAMPLES_NUM + j] + I * shm_ptr[i * SAMPLES_NUM + j + 1];
 
                 // Print first complex of each antenna sample batch for verification
-                if (j < 20) {
-                    printf("shm[%d]      =   %d + i%d\n", i * SAMPLES_NUM + j, (int)shm_ptr[i * SAMPLES_NUM + j], (int)shm_ptr[i * SAMPLES_NUM + j + 1]);   
-                    printf("vs\n");
-                    printf("temp_samples[%d][%d] =  %f + i%f\n\n", i, j, creal(temp_samples[i][j]), cimag(temp_samples[i][j]));
-                }
+                // if (j < 20) {
+                //     printf("shm[%d]      =   %d + i%d\n", i * SAMPLES_NUM + j, (int)shm_ptr[i * SAMPLES_NUM + j], (int)shm_ptr[i * SAMPLES_NUM + j + 1]);   
+                //     printf("vs\n");
+                //     printf("temp_samples[%d][%d] =  %f + i%f\n\n", i, j, creal(temp_samples[i][j]), cimag(temp_samples[i][j]));
+                // }
             }
         }
         printf("\n");
 
         // Process data for clear freqs and store result
-        clear_freq_search(temp_samples);
+        clear_freq_search(temp_samples, clr_bands);
         printf("[Frequency Server] Processed Client response successfully...\n");
     }
 
