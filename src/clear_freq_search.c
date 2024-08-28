@@ -199,6 +199,31 @@ void write_spectrum_to_csv(char *filename, fftw_complex *spectrum, double *freq_
     fclose(file);
 }
 
+void write_clr_freq_to_csv(char *filename, freq_band *clr_bands) {
+    FILE *file = fopen(filename, "w");
+    if (file == NULL) {
+        perror("Error opening file for writing");
+        exit(EXIT_FAILURE);
+    }
+
+    // Find Start and End of Clear Freq Range to Write later
+    int clr_start = RAND_MAX;
+    int clr_end = 0;
+    for (int i = 0; i < CLR_BANDS_MAX; i++) {
+        if (clr_bands[i].f_start < clr_start && clr_bands[i].noise < RAND_MAX) clr_start = clr_bands[i].f_start;
+        if (clr_bands[i].f_end > clr_end && clr_bands[i].noise < RAND_MAX) clr_end = clr_bands[i].f_end;
+    }    
+
+    fprintf(file, "Start Frequency,End Frequency,Noise,Clear Freq Start,Clear Freq End\n");
+    for (int i = 0; i < CLR_BANDS_MAX; i++) {
+        // Special: Print Clear Freq Range on Line 0
+        if (i == 0) fprintf(file, "%d,%d,%f,%d,%d\n", clr_bands[i].f_start, clr_bands[i].f_end, clr_bands[i].noise,clr_start,clr_end);
+        else fprintf(file, "%d,%d,%f\n", clr_bands[i].f_start, clr_bands[i].f_end, clr_bands[i].noise);
+    }
+
+    fclose(file);
+}
+
 void write_test_to_csv(char *filename, double *spectrum, double *freq_vector, int num_samples) {
     FILE *file = fopen(filename, "w");
     if (file == NULL) {
@@ -497,6 +522,7 @@ void find_clear_freqs(fftw_complex *spectrum_power, sample_meta_data meta_data, 
 // HACK apply efficient matrix multi via cblas_dgemm
 void calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_meta_data *meta_data, double *restricted_frequencies, double *clear_freq_range, double beam_angle, double smsep, freq_band *clr_bands) {
     char *spectrum_file = "../Freq_Server/utils/csv_dump/spectrum_output.csv";
+    char *clr_freq_file = "../Freq_Server/utils/csv_dump/clr_freq_output.csv";
     char *sample_re_file = "../Freq_Server/utils/csv_dump/samples/sample_re_output.csv";
     char *sample_im_file = "../Freq_Server/utils/csv_dump/samples/sample_im_output.csv";
     int **sample_re = NULL;
@@ -666,11 +692,6 @@ void calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_meta_data
 
     printf("delta_f: %f\nnum_samples: %d\nfcenter: %d\n", delta_f, num_samples, meta_data->usrp_fcenter * 1000);
 
-    // Save data to csv
-    write_spectrum_to_csv(spectrum_file, spectrum_power, freq_vector, num_samples);
-    write_sample_mag_to_csv(sample_im_file, sample_im, freq_vector, meta_data);
-    write_sample_mag_to_csv(sample_re_file, sample_re, freq_vector, meta_data);
-
     /// END of Spectrum Calc
 
 
@@ -691,7 +712,7 @@ void calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_meta_data
     clear_bw = 0;
     clock_t t1, t2;
     t1 = clock();
-    // find_clear_freqs(spectrum_power, *meta_data, delta_f, clear_freq_range[0], clear_freq_range[1], clear_bw, clr_bands);
+    find_clear_freqs(spectrum_power, *meta_data, delta_f, clear_freq_range[0], clear_freq_range[1], clear_bw, clr_bands);
     t2 = clock();
     printf("clear_freq_search (ms): %lf\n", ((double) (t2 - t1)) / (CLOCKS_PER_SEC * 1000));
 
@@ -699,6 +720,13 @@ void calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_meta_data
     for (int i = 0; i < CLR_BANDS_MAX; i++)
         printf("Clear Freq Band[%d]: | %dMHz -- Noise: %f -- %dMHz |\n", i, clr_bands[i].f_start, clr_bands[i].noise, clr_bands[i].f_end);
     
+
+    // Save data to csv
+    write_spectrum_to_csv(spectrum_file, spectrum_power, freq_vector, num_samples);
+    write_clr_freq_to_csv(clr_freq_file, clr_bands);
+    write_sample_mag_to_csv(sample_im_file, sample_im, freq_vector, meta_data);
+    write_sample_mag_to_csv(sample_re_file, sample_re, freq_vector, meta_data);
+
     printf("Finished Clear Freq Search!\n");
     
     fftw_free(phasing_vector);
