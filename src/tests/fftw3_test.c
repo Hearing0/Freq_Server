@@ -22,7 +22,7 @@ void beamform_samples(fftw_complex *raw_samples, fftw_complex *phasing_vector, i
 }
 
 // Function to calculate the FFT
-void fft_clrfreq_samples(fftw_complex *beamformed_samples, int num_samples, fftw_complex *spectrum_power) {
+void fft_samples(fftw_complex *beamformed_samples, int num_samples, fftw_complex *spectrum_power) {
     fftw_plan plan = fftw_plan_dft_1d(num_samples, beamformed_samples, spectrum_power, FFTW_FORWARD, FFTW_ESTIMATE);
     fftw_execute(plan);
     fftw_destroy_plan(plan);
@@ -46,7 +46,7 @@ int main() {
     beamform_samples(raw_samples, phasing_vector, num_samples, beamformed_samples);
 
     // Calculate FFT
-    fft_clrfreq_samples(beamformed_samples, num_samples, spectrum_power);
+    fft_samples(beamformed_samples, num_samples, spectrum_power);
 
     // Print the spectrum power
     for (int i = 0; i < num_samples; i++) {

@@ -6,7 +6,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 base_filepath = 'utils/csv_dump/samples/'
-files = ['sample_im_output.csv', 'sample_re_output.csv']
+files = ['avg_sample.csv']
+# 'sample_im_output.csv', 'sample_re_output.csv', 
 
 def retrieve_samples(filename):
     data = pd.read_csv(filename)
@@ -27,7 +28,7 @@ Power = []
 Samples = []
 
 # Load the spectrum data from CSV file
-for i in range(2):
+for i in len(2):
     file_name = base_filepath + files[i]
     data = retrieve_samples(file_name)
     
@@ -53,4 +54,4 @@ plt.yticks(np.arange(0, 400, 50))
 plt.legend()
 
 # Display the plot
-plt.savefig("plots/Sample_Plot.png")
+plt.savefig("plots/test_Plot.png")

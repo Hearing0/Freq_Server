@@ -21,7 +21,7 @@ clr_freq_data = pd.read_csv('utils/csv_dump/clr_freq_output.csv')
 
 # Print the DataFrame to check its content
 print(data.head())
-print(clr_freq_data.head())
+print(clr_freq_data.head(6))
 
 # Ensure the expected columns exist
 if 'Frequency' not in data.columns or 'Power' not in data.columns:
