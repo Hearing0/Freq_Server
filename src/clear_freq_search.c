@@ -330,7 +330,7 @@ void find_clear_freqs(double *spectrum, sample_meta_data meta_data, double delta
 
 
 // HACK apply efficient matrix multi via cblas_dgemm
-void calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_meta_data *meta_data, double *restricted_frequencies, double *clear_freq_range, double beam_angle, double smsep, freq_band *clr_bands) {
+void calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_meta_data *meta_data, freq_band *restricted_bands, double *clear_freq_range, double beam_angle, double smsep, freq_band *clr_bands) {
     char *spectrum_file = "../Freq_Server/utils/csv_dump/spectrum_output.csv";
     char *clr_freq_file = "../Freq_Server/utils/csv_dump/clr_freq_output.csv";
     char *sample_re_file = "../Freq_Server/utils/csv_dump/samples/sample_re_output.csv";
@@ -518,6 +518,7 @@ void calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_meta_data
 
 
     // Mask restricted frequencies
+    // TODO: implement
     
 
     int clear_sample_start = (int) round((clear_freq_range[0] - f_start) / delta_f);
@@ -557,7 +558,7 @@ void calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_meta_data
 // XXX: Add a initialization???
 
 // int main() {
-clear_freq clear_freq_search(fftw_complex **raw_samples, freq_band *clr_bands) {
+clear_freq clear_freq_search(fftw_complex **raw_samples, freq_band *clr_bands, freq_band *restricted_bands) {
 
     // HACK: Setup file_path environment variable
     const char *input_file_path = "../Freq_Server/utils/clear_freq_input/clrfreq_dump.1.txt";
@@ -591,7 +592,7 @@ clear_freq clear_freq_search(fftw_complex **raw_samples, freq_band *clr_bands) {
 
 
     // XXX: Define other parameters
-    double restricted_frequencies[] = { 0,0 };
+    // double restricted_frequencies[] = { 0,0 };
     double clear_freq_range[] = { 12 * pow(10,6), 12.5 * pow(10,6) };
     // double beam_angle = calc_beam_angle(n_beams, beam_num, beam_sep);  
     double beam_angle = 0.08482300164692443;        // in radians
@@ -603,7 +604,7 @@ clear_freq clear_freq_search(fftw_complex **raw_samples, freq_band *clr_bands) {
 
     // Find Clear Frequency Bands
     calc_clear_freq_on_raw_samples(
-        raw_samples, &meta_data, restricted_frequencies, 
+        raw_samples, &meta_data, restricted_bands, 
         clear_freq_range, beam_angle, smsep, clr_bands);
     
     // Print processing time; Stopwatch End
