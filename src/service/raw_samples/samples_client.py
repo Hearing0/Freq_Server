@@ -181,7 +181,8 @@ class ClearFrequencyService():
                 # if restrict_data is not None:
                 #     print("[clearFrequencyService] Data read from Restricted Freqs:", restrict_data[:5], "...")  # Print first 10 integers for brevity
                 print("[clearFrequencyService] Done reading data from Shared Memory...")
-                    
+                   
+                # Repack read data into its orignal format 
                 print("[Frequency Client] Repacking data to Shared Memory...")    
                 trimmed_samples = raw_samples[:1]           #HACK: writes only first antenna's samples; write all antenna samples
                 print("[Frequency Client] trimmed len: ", len(trimmed_samples))

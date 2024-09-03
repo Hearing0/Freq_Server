@@ -202,7 +202,6 @@ int main() {
         // Transfer restricted frequencies
         for (int i = 0; i < RESTRICT_NUM; i++) {                
             // Store Restricted Freq
-            // TODO: Verify this storing logic
             restricted_freq[i].f_start = restrict_shm_ptr[i * 2];
             restricted_freq[i].f_end = restrict_shm_ptr[i * 2 + 1];
             printf("restricted_freq[%d]: |%d -- %d|\n", i, restricted_freq[i].f_start, restricted_freq[i].f_end);
@@ -211,7 +210,7 @@ int main() {
         printf("\n");
 
         // Process data for clear freqs and store result
-        // clear_freq_search(temp_samples, clr_bands, restricted_freq);
+        clear_freq_search(temp_samples, clr_bands, restricted_freq, RESTRICT_NUM);
         printf("[Frequency Server] Processed Client response successfully...\n");
     }
 
