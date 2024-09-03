@@ -2,7 +2,13 @@ import os
 import pickle
 import numpy as np
 
-def save_to_text(pickle_file, text_file):
+def convert_sample_pickle_to_text(pickle_file, text_file):
+    """ Converts a pickle file to text_file for C interpretation. 
+
+    Args:
+        pickle_file (string): read filepath for pickle file
+        text_file (string): write filepath for txt file
+    """
     with open(pickle_file, 'rb') as f:
         data = pickle.load(f)
 
@@ -23,6 +29,32 @@ def save_to_text(pickle_file, text_file):
         for sample_array in raw_samples:
             for sample in sample_array:
                 f.write(f"{sample.real},{sample.imag}\n")
+
+def read_sample_pickle(pickle_file):
+    """ Reads in raw sample data and sample meta data from pickle for a Python 
+    script. 
+
+    Args:
+        pickle_file (string): read filepath for pickle file
+
+    Returns:
+        raw_samples: antenna_num by sample_num by complex (3D) array
+    """
+    with open(pickle_file, 'rb') as f:
+        data = pickle.load(f)
+        
+    raw_samples = data['raw_samples']
+    sample_meta = data['sample_data']
+    
+    return raw_samples, sample_meta
+
+
+
+
+
+
+
+
 # Example usage
 
 # TODO auto-convert all files in input folder
@@ -32,4 +64,4 @@ output_dir = "clear_freq_input"  # Directory where the output text file will be 
 pickle_file = os.path.join(pickle_dir, 'clrfreq_dump.1.pickle')
 text_file = os.path.join(output_dir, 'clrfreq_dump.1.txt')
 
-save_to_text(pickle_file, text_file)
+convert_sample_pickle_to_text(pickle_file, text_file)
