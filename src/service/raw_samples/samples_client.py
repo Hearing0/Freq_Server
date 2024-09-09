@@ -5,7 +5,7 @@ import time
 import posix_ipc
 import pickle       # To read in pickle test samples
 
-RESTRICT_FILE = "/home/df/Desktop/PSU-SuperDARN/Freq_Server/utils/misc_param/restrict.dat.inst"
+RESTRICT_FILE = "/home/radar/repos/Freq_Server/utils/misc_param/restrict.dat.inst"
 
 def read_restrict_file(restrict_file):
     restricted_frequencies = []
@@ -162,63 +162,61 @@ class ClearFrequencyService():
         try:
             # Map shared memory object as m
             # TODO: Why does nested map break!!!!!!!!!!!! 
-            with (
-                mmap.mmap(self.samples_shm_fd, self.SAMPLES_SHM_SIZE, mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE) as m_samples,
-                mmap.mmap(self.restrict_shm_fd, self.RESTRICT_SHM_SIZE, mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE) as m_restrict
-                ):  
-                # Await for a Client Request
-                print("[clearFrequencyService] Awaiting Client Request...\n")
-                self.sem_client.acquire()
-                print("[clearFrequencyService] Acquired Client Request...")
-                
-                # Read data from shared memory object
-                print("[clearFrequencyService] Reading data from Shared Memory...")
-                m_samples.seek(0)
-                # m_restrict.seek(0)
-                samples_data = struct.unpack('i' * (self.ANTENNAS_NUM * self.SAMPLES_NUM), m_samples.read(self.SAMPLES_SHM_SIZE))
-                print("[clearFrequencyService] Data read from Samples:", samples_data[:5], "...")  # Print first 10 integers for brevity
-                # TODO: Fix Fail check
-                # if restrict_data is not None:
-                #     print("[clearFrequencyService] Data read from Restricted Freqs:", restrict_data[:5], "...")  # Print first 10 integers for brevity
-                print("[clearFrequencyService] Done reading data from Shared Memory...")
-                   
-                # Repack read data into its orignal format 
-                print("[Frequency Client] Repacking data to Shared Memory...")    
-                trimmed_samples = raw_samples[:1]           #HACK: writes only first antenna's samples; write all antenna samples
-                print("[Frequency Client] trimmed len: ", len(trimmed_samples))
-                new_sample_data = []
-                for antenna_sample in trimmed_samples:  
-                    print("[Frequency Client] sample_arr len: ", len(antenna_sample))
-                    for sample in antenna_sample:
-                        new_sample_data.append(int(sample.real))
-                        new_sample_data.append(int(sample.imag))
-                        
-                        # Debug: Display samples
-                        # print("[Frequency Client] Flattening samples: ", sample)
-                        # print("[Frequency Client]                   : ", new_data[-2])
-                        # print("[Frequency Client]                   : ", new_data[-1])
-                new_restrict_data = []
-                print("[Frequency Client] restrict_arr len: ", len(restrict_data))
-                for restricted_freq in restrict_data:   
-                    new_restrict_data.append(int(restricted_freq[0]))
-                    new_restrict_data.append(int(restricted_freq[1]))
-                # print(new_restrict_data)
+            with mmap.mmap(self.samples_shm_fd, self.SAMPLES_SHM_SIZE, mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE) as m_samples:
+                with mmap.mmap(self.restrict_shm_fd, self.RESTRICT_SHM_SIZE, mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE) as m_restrict:  
+                    # Await for a Client Request
+                    print("[clearFrequencyService] Awaiting Client Request...\n")
+                    self.sem_client.acquire()
+                    print("[clearFrequencyService] Acquired Client Request...")
                     
-                # Write new data to Shared Memory Object
-                print("[Frequency Client] Writng data to Shared Memory...")    
-                print("[Frequency Client] new_data len of samples: ", len(new_sample_data))
-                print("[Frequency Client] Writing sample data:\n", new_sample_data[:10], "...")
-                m_samples.seek(0)
-                m_samples.write(struct.pack('i' * (self.ANTENNAS_NUM * self.SAMPLES_NUM), *new_sample_data))
-                print("[Frequency Client] Writing restricted freq data:\n", restrict_data[:2], "...")
-                
-                m_restrict.seek(0)
-                m_restrict.write(struct.pack('i' * (self.RESTRICT_NUM * 2), *new_restrict_data))
-                print("[Frequency Client] Done writing data to Shared Memory...")
-                
-                # Request Server 
-                print("[clearFrequencyService] Requesting Server Response...")
-                self.sem_server.release()
+                    # Read data from shared memory object
+                    print("[clearFrequencyService] Reading data from Shared Memory...")
+                    m_samples.seek(0)
+                    # m_restrict.seek(0)
+                    samples_data = struct.unpack('i' * (self.ANTENNAS_NUM * self.SAMPLES_NUM), m_samples.read(self.SAMPLES_SHM_SIZE))
+                    print("[clearFrequencyService] Data read from Samples:", samples_data[:5], "...")  # Print first 10 integers for brevity
+                    # TODO: Fix Fail check
+                    # if restrict_data is not None:
+                    #     print("[clearFrequencyService] Data read from Restricted Freqs:", restrict_data[:5], "...")  # Print first 10 integers for brevity
+                    print("[clearFrequencyService] Done reading data from Shared Memory...")
+                    
+                    # Repack read data into its orignal format 
+                    print("[Frequency Client] Repacking data to Shared Memory...")    
+                    trimmed_samples = raw_samples[:1]           #HACK: writes only first antenna's samples; write all antenna samples
+                    print("[Frequency Client] trimmed len: ", len(trimmed_samples))
+                    new_sample_data = []
+                    for antenna_sample in trimmed_samples:  
+                        print("[Frequency Client] sample_arr len: ", len(antenna_sample))
+                        for sample in antenna_sample:
+                            new_sample_data.append(int(sample.real))
+                            new_sample_data.append(int(sample.imag))
+                            
+                            # Debug: Display samples
+                            # print("[Frequency Client] Flattening samples: ", sample)
+                            # print("[Frequency Client]                   : ", new_data[-2])
+                            # print("[Frequency Client]                   : ", new_data[-1])
+                    new_restrict_data = []
+                    print("[Frequency Client] restrict_arr len: ", len(restrict_data))
+                    for restricted_freq in restrict_data:   
+                        new_restrict_data.append(int(restricted_freq[0]))
+                        new_restrict_data.append(int(restricted_freq[1]))
+                    # print(new_restrict_data)
+                        
+                    # Write new data to Shared Memory Object
+                    print("[Frequency Client] Writng data to Shared Memory...")    
+                    print("[Frequency Client] new_data len of samples: ", len(new_sample_data))
+                    print("[Frequency Client] Writing sample data:\n", new_sample_data[:10], "...")
+                    m_samples.seek(0)
+                    m_samples.write(struct.pack('i' * (self.ANTENNAS_NUM * self.SAMPLES_NUM), *new_sample_data))
+                    print("[Frequency Client] Writing restricted freq data:\n", restrict_data[:2], "...")
+                    
+                    m_restrict.seek(0)
+                    m_restrict.write(struct.pack('i' * (self.RESTRICT_NUM * 2), *new_restrict_data))
+                    print("[Frequency Client] Done writing data to Shared Memory...")
+                    
+                    # Request Server 
+                    print("[clearFrequencyService] Requesting Server Response...")
+                    self.sem_server.release()
         except KeyboardInterrupt:
             print("[clearFrequencyService] Keyboard interrupt received. Exiting...")
         finally:
@@ -261,7 +259,7 @@ def read_sample_pickle(pickle_file):
 
 
 
-raw_samples, meta_data = read_sample_pickle("/home/df/Desktop/PSU-SuperDARN/Freq_Server/utils/pickle_input/clrfreq_dump.1.pickle")
+raw_samples, meta_data = read_sample_pickle("/home/radar/repos/Freq_Server/utils/pickle_input/clrfreq_dump.1.pickle")
 
 # Send Empty sample info
 CFS = ClearFrequencyService()

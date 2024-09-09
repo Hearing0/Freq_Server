@@ -14,7 +14,7 @@
 
 #define SAMPLES_NUM 2500
 #define ANTENNAS_NUM 14
-#define RESTRICT_NUM 15             // Number of restricted freq bands in the restrict.dat.inst
+#define RESTRICT_NUM 16             // Number of restricted freq bands in the restrict.dat.inst
 #ifndef CLR_BANDS_MAX
 #define CLR_BANDS_MAX 6
 #endif

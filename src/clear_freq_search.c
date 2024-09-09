@@ -28,7 +28,7 @@
 // Debug Flags
 #define VERBOSE 1
 #define SPECTRAL_AVGING 1
-#define TEST_SAMPLES 1
+#define TEST_SAMPLES 0
 #define TEST_CLR_RANGE 1
 
 #include "../utils/misc_read_writes.c" // Pulls Debug Testing Data
@@ -230,8 +230,14 @@ void find_clear_freqs(double *spectrum, sample_meta_data meta_data, double delta
 
     // Define Range of Clear Freq Search 
     int spectrum_sample_start = (int) ((meta_data.usrp_fcenter * 1000 - meta_data.usrp_rf_rate / 2) / delta_f);
+    int spectrum_sample_end = (int) ((meta_data.usrp_fcenter * 1000 + meta_data.usrp_rf_rate / 2) / delta_f);
     int clr_search_sample_start = (int) (f_start / delta_f) - spectrum_sample_start;
     int clr_search_sample_end = (int) (f_end / delta_f) - spectrum_sample_start;
+    if (clr_search_sample_start < 0) clr_search_sample_start = 0;
+    else if (clr_search_sample_start > spectrum_sample_end) clr_search_sample_start = spectrum_sample_end;
+    if (clr_search_sample_end < 0) clr_search_sample_end = 0;
+    else if (clr_search_sample_end > spectrum_sample_end) clr_search_sample_end = spectrum_sample_end;
+        
 
     // Trim Spectrum Data to only Clear Search Range (Used for convolving)
     int clr_search_sample_bw = clr_search_sample_end - clr_search_sample_start;
@@ -636,7 +642,7 @@ clear_freq clear_freq_search(fftw_complex **raw_samples, freq_band *clr_bands, f
 
     // XXX: Define other parameters
     // double restricted_frequencies[] = { 0,0 };
-    double clear_freq_range[] = { 12 * pow(10,6), 12.5 * pow(10,6) };
+    double clear_freq_range[] = { 7 * pow(10,6), 15 * pow(10,6) };
     // double beam_angle = calc_beam_angle(n_beams, beam_num, beam_sep);  
     double beam_angle = 0.08482300164692443;        // in radians
     double smsep = .0003; // 1 / (2 * 250 * pow(10, 3));      // ~4 ms
