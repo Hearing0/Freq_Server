@@ -18,16 +18,25 @@
 #ifndef CLR_BANDS_MAX
 #define CLR_BANDS_MAX 6
 #endif
+
 #define RESTRICT_SHM_SIZE (RESTRICT_NUM * 2 * sizeof(int))          // 2 = start and end freqs
 #define SAMPLES_SHM_SIZE (ANTENNAS_NUM * SAMPLES_NUM * sizeof(int)) // TODO: Finish 2x2500 test
 #define CLR_BANDS_SHM_SIZE (CLR_BANDS_MAX * 4 * 2)         // TODO: Round to convert freqs to int again 
 // #define SAMPLES_SHM_SIZE (2 * SAMPLES_NUM * ANTENNAS_NUM * sizeof(int))  // Size for a 2x14x2500 array of integers
-#define SAMPLES_SHM_NAME "/samples"
-#define RESTRICT_SHM_NAME "/restricted_freq"
-#define CLRFREQ_SHM_NAME "/clear_freq"
+
+// Shared Memory and Semaphore Names 
+#define SAMPLES_SHM_NAME    "/samples"
+#define RESTRICT_SHM_NAME   "/restricted_freq"
+#define CLRFREQ_SHM_NAME    "/clear_freq"
 #define PARAM_NUM 3
-#define SEM_SERVER "/sem_server"
-#define SEM_CLIENT "/sem_client"
+
+#define SEM_CLIENT  "/sem_client"               // For Sync and reserving client and server roles during data transfer
+#define SEM_SERVER  "/sem_server"               
+#define SEM_DATA    "/sem_data"                 // For multiple data transfers on single instance 
+#define SEM_SAMPLES "/sem_samples"              // For Data locking b/w write/reads
+#define SEM_INIT    "/sem_init"                 // init = initialization
+#define SEM_CLRFREQ "/sem_clrfreq"
+#define SEM_NUM 5
 
 typedef struct shm_obj{
     const char* name;
@@ -36,18 +45,35 @@ typedef struct shm_obj{
     size_t size;
 } shm_obj;
 
+typedef struct semaphore {
+    const char* name;
+    sem_t* sem;
+} semaphore;
 
-// Initiate with flags:
+
+
+// Build with the following flags:
 // -lrt -pthread -lfftw3 -lm
 
 // TODO: Read/Write of specific data types (only write samples and restrict vs read clr freq)
-// TODO: Test Clr Freq by flipping logic at lab
 // TODO: Calc all beam directions at recieve of samples
 // TODO: Num of Radar {has table of all beam dirc {has Clr freq in beam direction}}} while sharing restricting assigned freq 
 // TODO: Rewrite of usrp sample send/clr freq request timing logic 
 
-sem_t *sem_server = NULL;
-sem_t *sem_client = NULL;
+struct semaphore s_client   = {SEM_CLIENT,  NULL};
+struct semaphore s_server   = {SEM_SERVER,  NULL};
+struct semaphore s_data     = {SEM_DATA,    NULL};
+struct semaphore s_samples  = {SEM_SAMPLES, NULL};
+struct semaphore s_init     = {SEM_INIT,    NULL};
+struct semaphore s_clrfreq  = {SEM_CLRFREQ, NULL};
+struct semaphore *semaphores[SEM_NUM] = {
+    &s_client,
+    &s_server,    
+    &s_data,
+    &s_samples,
+    &s_init,
+    &s_clrfreq,
+};
 
 shm_obj samples_obj = {SAMPLES_SHM_NAME, NULL, -1, SAMPLES_SHM_SIZE};
 shm_obj restrict_obj = {RESTRICT_SHM_NAME, NULL, -1, RESTRICT_SHM_SIZE};
@@ -56,7 +82,6 @@ struct shm_obj *objects[PARAM_NUM] = {
     &samples_obj, 
     &restrict_obj, 
     &clrfreq_obj,
-
 };
 
 
@@ -139,14 +164,19 @@ void clean(shm_obj shm_obj) {
     sem_unlink(shm_obj.name);
 }
 
+void clean_sem(semaphore sem) {
+    if ((sem.sem)) sem_close( (sem.sem));
+}
+
 /**
  * @brief  Deallocates all service semaphores and SHM pointers.
  * @note   
  * @retval None
  */
 void cleanup() {
-    if (sem_server) sem_close(sem_server);
-    if (sem_client) sem_close(sem_client);
+    for (int i = 0; i < SEM_NUM; i++) clean_sem(*semaphores[i]);
+    // if (sem_server) sem_close(sem_server);
+    // if (sem_client) sem_close(sem_client);
     for (int i = 0; i < PARAM_NUM; i++) clean(*objects[i]);
 
     sem_unlink(SEM_SERVER);
@@ -185,11 +215,6 @@ int main() {
             exit(EXIT_FAILURE);
         }
     }
-    // objects[0]->shm_fd = shm_open(objects[0]->name, O_CREAT | O_RDWR, 0666);
-    // if (samples_obj.shm_fd == -1) {
-    //     printf("[Frequency Server] shm_open failed for %s\n", samples_obj.name);
-    //     exit(EXIT_FAILURE);
-    // }
     printf("[Frequency Server] Created Shared Memory Objects...\n");
     
     // Set Size of Shared Memory Object
@@ -199,11 +224,6 @@ int main() {
             exit(EXIT_FAILURE);
         }
     }
-    // if (ftruncate(samples_obj.shm_fd, samples_obj.size) == -1) {
-    //     perror("[Frequency Server] ftruncate failed\n");
-    //     exit(EXIT_FAILURE);
-    // }
-
     // Request Block of Memory
     printf("[Frequency Server] Requesting Shared Memory Cache...\n");    
     for (int i = 0; i < PARAM_NUM; i++) {
@@ -213,22 +233,21 @@ int main() {
             exit(EXIT_FAILURE);
         }
     }
-    // objects[0].shm_ptr = mmap(0, objects[0].size, PROT_WRITE | PROT_READ, MAP_SHARED, objects[0].shm_fd, 0);
-    // samples_obj.shm_ptr = mmap(0, SAMPLES_SHM_SIZE, PROT_WRITE | PROT_READ, MAP_SHARED, samples_obj.shm_fd, 0);
     printf("[Frequency Server] Memory successfully cached...\n");
 
 
     // Open Semaphores for synchronization     
-    printf("[Frequency Server] Opening Communication Semaphores...\n");
-    sem_t *sem_server = sem_open(SEM_SERVER, O_CREAT, 0666, 0);
-    sem_t *sem_client = sem_open(SEM_CLIENT, O_CREAT, 0666, 0);
-    if (sem_server == SEM_FAILED || sem_client == SEM_FAILED) {
-        perror("[Frequency Server] One or more sem_open failed.\n");
-        exit(EXIT_FAILURE);
-    } else {
-        printf("[Frequency Server] All semaphores have been established...\n");
+    printf("[Frequency Server] Opening Communication Semaphores...\n");    
+    for (int i = 0; i < SEM_NUM; i++) {
+        semaphores[i]->sem = sem_open(semaphores[i]->name, O_CREAT, 0666, 0);
+        if (semaphores[i]->sem == SEM_FAILED) {
+            printf("[Frequency Server] \"%s\" sem_open failed.\n", semaphores[i]->name);
+            exit(EXIT_FAILURE);    
+        } 
+        // else {
+        //     printf("[Frequency Server] \"%s\" sem_open success.\n", semaphores[i]->name);
+        // }
     }
-
     printf("[Frequency Server] Done Initializing...\n\n");
 
     // Allocate temp mem for shm varibles
@@ -261,11 +280,11 @@ int main() {
     // Continuously Send and Receive messages via Shared Memory
     while (1) {
         printf("[Frequency Server] Requesting new client to respond...\n\n");
-        sem_post(sem_client); 
+        sem_post(semaphores[0]->sem); 
         
         // TODO: Client writes to param shm
         printf("[Frequency Server] Awaiting client response...\n");
-        sem_wait(sem_server);   
+        sem_wait(semaphores[1]->sem);   
 
         // TODO: Add Param Buffer for meta data and clear freq range
         printf("[Frequency Server] Processing client frequency data...\n");

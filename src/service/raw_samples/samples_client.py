@@ -32,32 +32,81 @@ class ClearFrequencyService():
     RESTRICT_NUM = 15
     RESTRICT_ELEM_NUM = RESTRICT_NUM * 2                # 2 = start & stop of restrict freq band
     CLR_BAND_MAX = 6
+    CLR_BAND_ELEM_NUM = CLR_BAND_MAX * 3                # 3 = start & stop freqs and noise
+    
     RESTRICT_SHM_SIZE = RESTRICT_NUM * 4 * 2            # 4 * 2 = int size * (start & stop of restrict freq band)
-
     SAMPLES_SHM_SIZE = ANTENNAS_NUM * SAMPLES_NUM * 4    # 2x2500 array of integers (each integer is 4 bytes)
+    CLR_FREQ_SHM_SIZE = CLR_BAND_ELEM_NUM* 4 
     
     RETRY_ATTEMPTS = 5
     RETRY_DELAY = 2  # seconds
     
+    # Shared Memory Object and Semaphores Names
+    SAMPLES_SHM_NAME  = "/samples"             # For Data Transmission
+    RESTRICT_SHM_NAME = "/restricted_freq"
+    CLR_FREQ_SHM_NAME = "/clear_freq"
+    
+    SEM_SERVER     = "/sem_server"              # For Sync and reserving client and server roles during data transfer 
+    SEM_CLIENT     = "/sem_client"
+    SEM_DATA       = "/sem_data"                # For multiple data transfers on single instance
+    SEM_SAMPLES    = "/sem_samples"             # For Data locking b/w write/reads
+    SEM_INIT       = "/sem_init"                # init = initialization
+    SEM_CLRFREQ    = "/sem_clrfreq"
+    ACTIVE_CLIENTS_SHM_NAME = "/active_clients" # For Debugging
+    
+    
     def __init__(self):
         # Shared Memory Object and Semaphores
-        self.RESTRICT_SHM_SIZE = self.RESTRICT_NUM * 4 * 2
-        self.SAMPLES_SHM_SIZE = self.ANTENNAS_NUM * self.SAMPLES_NUM * 4  # 14x2500 array of integers (each integer is 4 bytes)
-        self.SAMPLES_SHM_NAME = "/samples"             # For Data Transmission
-        self.RESTRICT_SHM_NAME = "/restricted_freq"
-        self.CLR_FREQ_SHM_NAME = "/clear_freq"
-        SHM_NAMES = {self.SAMPLES_SHM_NAME, self.RESTRICT_SHM_NAME, self.CLR_FREQ_SHM_NAME}
-        self.SEM_SERVER = "/sem_server"                              # For Synchronization 
-        self.SEM_CLIENT = "/sem_client"
-        self.ACTIVE_CLIENTS_SHM_NAME = "/active_clients" # For Debugging
-        
-        self.samples_shm_fd = self.initialize_shared_memory(self.SAMPLES_SHM_NAME)
-        self.restrict_shm_fd = self.initialize_shared_memory(self.RESTRICT_SHM_NAME)
-        self.clear_shm_fd = self.initialize_shared_memory(self.CLR_FREQ_SHM_NAME)
+        self.shm_objects = [
+            self.create_shm_obj(self.SAMPLES_SHM_NAME ,self.SAMPLES_SHM_SIZE), 
+            self.create_shm_obj(self.RESTRICT_SHM_NAME,self.RESTRICT_SHM_SIZE), 
+            self.create_shm_obj(self.CLR_FREQ_SHM_NAME,self.CLR_FREQ_SHM_SIZE)
+        ]
+        self.semaphores = [
+            self.create_semaphore(self.SEM_CLIENT),
+            self.create_semaphore(self.SEM_SERVER),
+            self.create_semaphore(self.SEM_SERVER),
+            self.create_semaphore(self.SEM_SAMPLES),
+            self.create_semaphore(self.SEM_INIT),
+            self.create_semaphore(self.SEM_CLRFREQ),
+        ]
+
+        for obj in self.shm_objects:
+            obj['shm_fd'] = self.initialize_shared_memory(obj['name'])
+        self.sem_server, self.sem_client = self.semaphores[1]['sem'], self.semaphores[0]['sem']
+        # self.sem_server, self.sem_client = self.initialize_semaphores()
+                
         self.active_clients_fd = None 
         self.initialize_active_clients_counter()
-        self.sem_server, self.sem_client = self.initialize_semaphores()
         print("[clearFrequencyService] Done Initializing...\n\n")
+        
+    def create_shm_obj(self, name, size):
+        """ Returns a dictionary containing pre-filled fields for shared memory (SHM) object data.
+            
+        Args:
+            name (string): name of the shared memory object
+            size (integer): size of the file/SHM object
+
+        Returns:
+            dictionary: Contains commonly referenced info of a shared memory object
+                Contains:
+                    - 'name' 
+                    - 'shm_ptr' or pointer 
+                    - 'shm_fd' or file descriptor 
+                    - 'size' of the file/SHM object
+        """
+        return {
+            'name': name,
+            'shm_ptr': None,
+            'shm_fd': -1,
+            'size': size
+        }
+        
+    def create_semaphore(self, name):
+        return {
+            'name': name,
+            'sem':  self.initialize_semaphores(name)
+        }
 
     def initialize_shared_memory(self, shm_name):
         """ Initialize Shared Memory Object for data transmission between Server 
@@ -81,7 +130,7 @@ class ClearFrequencyService():
         print(f"[clearFrequencyService] Failed to initialize {shm_name}. Shared Memory Object after multiple attempts. Exiting.")
         exit(1)
 
-    def initialize_semaphores(self):
+    def initialize_semaphores(self, name):
         """ Initializes Synchronization Semaphores. Attempts to check for already 
             initialized object (from server).
 
@@ -91,16 +140,15 @@ class ClearFrequencyService():
         attempts = 0
         while attempts < self.RETRY_ATTEMPTS:
             try:
-                print(f"[clearFrequencyService] Attempting to initialize Semaphores (Attempt {attempts + 1}/{self.RETRY_ATTEMPTS})...")
-                self.sem_server = posix_ipc.Semaphore(self.SEM_SERVER)
-                self.sem_client = posix_ipc.Semaphore(self.SEM_CLIENT)
-                print("[clearFrequencyService] Shared Memory and Semaphores ready...")
-                return self.sem_server, self.sem_client
+                print(f"[clearFrequencyService] Attempting to initialize Semaphore {name} (Attempt {attempts + 1}/{self.RETRY_ATTEMPTS})...")
+                semaphore = posix_ipc.Semaphore(name)
+                print(f"[clearFrequencyService] Semaphore {name} ready...")
+                return semaphore        # self.sem_server, self.sem_client
             except posix_ipc.ExistentialError:
-                print("[clearFrequencyService] Semaphore(s) not found. Retrying...")
+                print("[clearFrequencyService] Semaphore not found. Retrying...")
             attempts += 1
             time.sleep(self.RETRY_DELAY)
-        print("[clearFrequencyService] Failed to initialize Semaphores after multiple attempts. Exiting.")
+        print(f"[clearFrequencyService] Failed to initialize Semaphore {name} after multiple attempts. Exiting.")
         exit(1)
 
     def initialize_active_clients_counter(self):
@@ -218,60 +266,65 @@ class ClearFrequencyService():
         
         try:
             # Map shared memory object as m
-            with mmap.mmap(self.samples_shm_fd, self.SAMPLES_SHM_SIZE, mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE) as m_samples:
-                with mmap.mmap(self.restrict_shm_fd, self.RESTRICT_SHM_SIZE, mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE) as m_restrict:  
-                    # Await for a Client Request
-                    print("[clearFrequencyService] Awaiting Client Request...\n")
-                    self.sem_client.acquire()
-                    print("[clearFrequencyService] Acquired Client Request...")
+            # with mmap.mmap(self.shm_objects[0]['shm_fd'], self.shm_objects[0]['size'], mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE) as m_samples:
+            #     with mmap.mmap(self.shm_objects[1]['shm_fd'], self.shm_objects[1]['size'], mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE) as m_restrict:  
                     
-                    # Read data from shared memory object
-                    print("[clearFrequencyService] Reading data from Shared Memory...")
-                    m_samples.seek(0)
-                    # m_restrict.seek(0)
-                    samples_data = struct.unpack('i' * (self.ANTENNAS_NUM * self.SAMPLES_NUM), m_samples.read(self.SAMPLES_SHM_SIZE))
-                    print("[clearFrequencyService] Data read from Samples: ", samples_data[:5], "...")  # Print first 10 integers for brevity
-                    print("[clearFrequencyService] Done reading data from Shared Memory...")
+            for obj in self.shm_objects:
+                obj['shm_ptr'] = mmap.mmap(self.shm_objects[0]['shm_fd'], self.shm_objects[0]['size'], mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE)
+            
+            # Await for a Client Request
+            print("[clearFrequencyService] Awaiting Client Request...\n")
+            self.sem_client.acquire()
+            print("[clearFrequencyService] Acquired Client Request...")
+            
+            # Read data from shared memory object
+            print("[clearFrequencyService] Reading data from Shared Memory...")
+            self.shm_objects[0]['shm_ptr'].seek(0)
+            # m_restrict.seek(0)
+            samples_data = struct.unpack('i' * (self.ANTENNAS_NUM * self.SAMPLES_NUM), self.shm_objects[0]['shm_ptr'].read(self.shm_objects[0]['size']))
+            print("[clearFrequencyService] Data read from Samples: ", samples_data[:5], "...")  # Print first 10 integers for brevity
+            print("[clearFrequencyService] Done reading data from Shared Memory...")
+            
+            # Flatten data arrays for SHM writing 
+            print("[Frequency Client] Repacking data to Shared Memory...")    
+            trimmed_samples = raw_samples[:1]           #HACK: writes only first antenna's samples; write all antenna samples
+            print("[Frequency Client] trimmed len: ", len(trimmed_samples))
+            new_sample_data = []
+            for antenna_sample in trimmed_samples:  
+                print("[Frequency Client] sample_arr len: ", len(antenna_sample))
+                for sample in antenna_sample:
+                    new_sample_data.append(int(sample.real))
+                    new_sample_data.append(int(sample.imag))
                     
-                    # Flatten data arrays for SHM writing 
-                    print("[Frequency Client] Repacking data to Shared Memory...")    
-                    trimmed_samples = raw_samples[:1]           #HACK: writes only first antenna's samples; write all antenna samples
-                    print("[Frequency Client] trimmed len: ", len(trimmed_samples))
-                    new_sample_data = []
-                    for antenna_sample in trimmed_samples:  
-                        print("[Frequency Client] sample_arr len: ", len(antenna_sample))
-                        for sample in antenna_sample:
-                            new_sample_data.append(int(sample.real))
-                            new_sample_data.append(int(sample.imag))
-                            
-                            # Debug: Display samples
-                            # print("[Frequency Client] Flattening samples: ", sample)
-                            # print("[Frequency Client]                   : ", new_data[-2])
-                            # print("[Frequency Client]                   : ", new_data[-1])
-                            
-                    new_restrict_data = []
-                    print("[Frequency Client] restrict_arr len: ", len(restrict_data))
-                    for restricted_freq in restrict_data:   
-                        new_restrict_data.append(int(restricted_freq[0]))
-                        new_restrict_data.append(int(restricted_freq[1]))
+                    # Debug: Display samples
+                    # print("[Frequency Client] Flattening samples: ", sample)
+                    # print("[Frequency Client]                   : ", new_data[-2])
+                    # print("[Frequency Client]                   : ", new_data[-1])
+                    
+            new_restrict_data = []
+            print("[Frequency Client] restrict_arr len: ", len(restrict_data))
+            for restricted_freq in restrict_data:   
+                new_restrict_data.append(int(restricted_freq[0]))
+                new_restrict_data.append(int(restricted_freq[1]))
 
-                    # self.write_m_data()
-                        
-                    # Write new data to Shared Memory Object
-                    print("[Frequency Client] Writng data to Shared Memory...")    
-                    print("[Frequency Client] new_data len of samples: ", len(new_sample_data))
-                    print("[Frequency Client] Writing sample data:\n", new_sample_data[:10], "...")
-                    m_samples.seek(0)
-                    m_samples.write(struct.pack('i' * (self.ANTENNAS_NUM * self.SAMPLES_NUM), *new_sample_data))
-                    
-                    # print("[Frequency Client] Writing restricted freq data:\n", restrict_data[:2], "...")
-                    # m_restrict.seek(0)
-                    # m_restrict.write(struct.pack('i' * (self.RESTRICT_NUM * 2), *new_restrict_data))
-                    print("[Frequency Client] Done writing data to Shared Memory...")
-                    
-                    # Request Server 
-                    print("[clearFrequencyService] Requesting Server Response...")
-                    self.sem_server.release()
+            # self.write_m_data()
+                
+            # Write new data to Shared Memory Object
+            print("[Frequency Client] Writng data to Shared Memory...")    
+            print("[Frequency Client] new_data len of samples: ", len(new_sample_data))
+            print("[Frequency Client] Writing sample data:\n", new_sample_data[:10], "...")
+            self.shm_objects[0]['shm_ptr'].seek(0)
+            self.shm_objects[0]['shm_ptr'].write(struct.pack('i' * (self.ANTENNAS_NUM * self.SAMPLES_NUM), *new_sample_data))
+            
+            print("[Frequency Client] Writing restricted freq data:\n", restrict_data[:2], "...")
+            self.shm_objects[1]['shm_ptr'].seek(0)
+            self.shm_objects[1]['shm_ptr'].write(struct.pack('i' * (self.RESTRICT_NUM * 2), *new_restrict_data))
+            print("[Frequency Client] Done writing data to Shared Memory...")
+            
+            # Request Server 
+            print("[clearFrequencyService] Requesting Server Response...")
+            # self.sem_server.release()
+            self.semaphores[1]['sem'].release()
         except KeyboardInterrupt:
             print("[clearFrequencyService] Keyboard interrupt received. Exiting...")
         finally:
@@ -279,24 +332,27 @@ class ClearFrequencyService():
             active_clients = self.decrement_active_clients()
             print(f"[clearFrequencyService] Active clients count after decrement: {active_clients}")
 
-            os.close(self.samples_shm_fd)
-            os.close(self.restrict_shm_fd)
+            # os.close(self.samples_shm_fd)
+            for obj in self.shm_objects: 
+                os.close(obj['shm_fd'])
             os.close(self.active_clients_fd)
-            self.sem_server.close()
-            self.sem_client.close()
+            # self.sem_server.close()
+            # self.sem_client.close()
+            for sem in self.semaphores:
+                sem['sem'].close()
 
             if active_clients == 0:
-                print("[clearFrequencyService] No active clients remaining; cleaning up shared resources.")
-                self.cleanup_shm()
-                # print("[clearFrequencyService] No active clients remaining, but not cleaning up shared resources to keep service idle.")
+                # print("[clearFrequencyService] No active clients remaining; cleaning up shared resources.")
+                # self.cleanup_shm()
+                print("[clearFrequencyService] No active clients remaining, but not cleaning up shared resources to keep service idle.")
     
     def cleanup_shm(self):
-        for SHM_NAME in self.SHM_NAMES:
+        for obj in self.shm_objects:
             try:
-                posix_ipc.unlink_shared_memory(SHM_NAME)
-                print(f"Unlinked shared memory {SHM_NAME}")
+                posix_ipc.unlink_shared_memory(obj['name'])
+                print(f"Unlinked shared memory {obj['name']}")
             except posix_ipc.ExistentialError:
-                print(f"Shared memory {SHM_NAME} does not exist")
+                print(f"Shared memory {obj['name']} does not exist")
 
         try:
             posix_ipc.unlink_shared_memory(self.ACTIVE_CLIENTS_SHM_NAME)
@@ -304,17 +360,24 @@ class ClearFrequencyService():
         except posix_ipc.ExistentialError:
             print(f"Shared memory {self.ACTIVE_CLIENTS_SHM_NAME} does not exist")
 
-        try:
-            posix_ipc.unlink_semaphore(self.SEM_SERVER)
-            print(f"Unlinked semaphore {self.SEM_SERVER}")
-        except posix_ipc.ExistentialError:
-            print(f"Semaphore {self.SEM_SERVER} does not exist")
+        for sem in self.semaphores:
+            try:
+                posix_ipc.unlink_semaphore(sem['name'])
+                print(f"Unlinked semaphore {sem['name']}")
+            except posix_ipc.ExistentialError:
+                print(f"Semaphore {sem['name']} does not exist")
 
-        try:
-            posix_ipc.unlink_semaphore(self.SEM_CLIENT)
-            print(f"Unlinked semaphore {self.SEM_CLIENT}")
-        except posix_ipc.ExistentialError:
-            print(f"Semaphore {self.SEM_CLIENT} does not exist")
+        # try:
+        #     posix_ipc.unlink_semaphore(self.SEM_SERVER)
+        #     print(f"Unlinked semaphore {self.SEM_SERVER}")
+        # except posix_ipc.ExistentialError:
+        #     print(f"Semaphore {self.SEM_SERVER} does not exist")
+
+        # try:
+        #     posix_ipc.unlink_semaphore(self.SEM_CLIENT)
+        #     print(f"Unlinked semaphore {self.SEM_CLIENT}")
+        # except posix_ipc.ExistentialError:
+        #     print(f"Semaphore {self.SEM_CLIENT} does not exist")
                 
 
 def read_sample_pickle(pickle_file):
