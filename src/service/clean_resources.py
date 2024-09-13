@@ -1,17 +1,18 @@
 import posix_ipc
 
 # Shared Memory Object and Semaphores
-SHM_NAME = "/shared_memory"
+SHM_NAMES = {"/samples", "/restricted_freq", "/clear_freq"}
 ACTIVE_CLIENTS_SHM_NAME = "/active_clients"
 SEM_SERVER = "/sem_server"
 SEM_CLIENT = "/sem_client"
 
 def cleanup_shared_memory_and_semaphores():
-    try:
-        posix_ipc.unlink_shared_memory(SHM_NAME)
-        print(f"Unlinked shared memory {SHM_NAME}")
-    except posix_ipc.ExistentialError:
-        print(f"Shared memory {SHM_NAME} does not exist")
+    for SHM_NAME in SHM_NAMES:
+        try:
+            posix_ipc.unlink_shared_memory(SHM_NAME)
+            print(f"Unlinked shared memory {SHM_NAME}")
+        except posix_ipc.ExistentialError:
+            print(f"Shared memory {SHM_NAME} does not exist")
 
     try:
         posix_ipc.unlink_shared_memory(ACTIVE_CLIENTS_SHM_NAME)
