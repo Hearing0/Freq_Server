@@ -32,11 +32,11 @@ class ClearFrequencyService():
     RESTRICT_NUM = 15
     RESTRICT_ELEM_NUM = RESTRICT_NUM * 2                # 2 = start & stop of restrict freq band
     CLR_BAND_MAX = 6
-    CLR_BAND_ELEM_NUM = CLR_BAND_MAX * 3                # 3 = start & stop freqs and noise
+    CLR_BAND_ELEM_NUM = CLR_BAND_MAX * 3                # 2 = start & stop freqs and noise
     
     RESTRICT_SHM_SIZE = RESTRICT_NUM * 4 * 2            # 4 * 2 = int size * (start & stop of restrict freq band)
     SAMPLES_SHM_SIZE = ANTENNAS_NUM * SAMPLES_NUM * 4    # 2x2500 array of integers (each integer is 4 bytes)
-    CLR_FREQ_SHM_SIZE = CLR_BAND_ELEM_NUM* 4 
+    CLR_FREQ_SHM_SIZE = CLR_BAND_MAX * 4 * 3
     
     RETRY_ATTEMPTS = 5
     RETRY_DELAY = 2  # seconds
@@ -65,7 +65,7 @@ class ClearFrequencyService():
         self.semaphores = [
             self.create_semaphore(self.SEM_CLIENT),
             self.create_semaphore(self.SEM_SERVER),
-            self.create_semaphore(self.SEM_SERVER),
+            self.create_semaphore(self.SEM_DATA),
             self.create_semaphore(self.SEM_SAMPLES),
             self.create_semaphore(self.SEM_INIT),
             self.create_semaphore(self.SEM_CLRFREQ),
@@ -73,7 +73,9 @@ class ClearFrequencyService():
 
         for obj in self.shm_objects:
             obj['shm_fd'] = self.initialize_shared_memory(obj['name'])
-        self.sem_server, self.sem_client = self.semaphores[1]['sem'], self.semaphores[0]['sem']
+        self.sem_client = self.semaphores[0]['sem']
+        self.sem_server = self.semaphores[1]['sem']
+        # self.sem_server, self.sem_client = self.semaphores[1]['sem'], self.semaphores[0]['sem']
         # self.sem_server, self.sem_client = self.initialize_semaphores()
                 
         self.active_clients_fd = None 
@@ -216,24 +218,36 @@ class ClearFrequencyService():
             m_data.write(struct.pack('i' * data_size, *flattened_data))   
     
                 
-    def read_m_data(data_shm_fd, data_size, data_shm_size, data_sub_size = 1):
-        with mmap.mmap(data_shm_fd, data_shm_size, mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE) as m_data:
-            m_data.seek(0)
-            read_data = struct.unpack('i' * (data_size * data_sub_size), m_data.read(data_shm_size))
-            print("[clearFrequencyService] Data read from Shm: ", read_data[:5], "...")  # Print first 10 integers for brevity
+    def read_m_data(self, obj, data_size, data_sub_size = 1):
+        """Reads in data from the shared memory file descriptor.
+
+        Args:
+            obj (dict): Data object containing file descriptor and shared memory size.
+            data_size (int): Shared Memory Size.
+            data_sub_size (int, optional): Shared Memory sub element size; used for 2D arrays. Defaults to 1.
+
+        Returns:
+            list: Contains 1D list of Shared Memory data.
+        """
+        obj['shm_ptr'].seek(0)
+        read_data = struct.unpack('i' * (data_size * data_sub_size), obj['shm_ptr'].read(obj['size']))
+        
+        # Debug: Verify format of data object's raw data
+        # print("[clearFrequencyService] Data read from Shm: ", read_data[:5], "...")  # Print first 10 integers for brevity
+        
         return read_data
     
     
-    def repack_data(read_data, clr_freq = False, data_size = 1, data_sub_size = 1):
-        """Repacks read data from SHM into its proper format. Currently repacks
+    def repack_data(self, read_data, clr_freq = False, data_size = 1, data_sub_size = 1):
+        """Repacks read data from SHM into its specified format. Currently repacks
         the following:
         - Clear Frequency
 
         Args:
-            read_data (_type_): _description_
-            data_size (_type_): _description_
-            data_sub_size (int, optional): _description_. Defaults to 1.
-            clr_freq (bool, optional): Interpret as Clear Frequency (returns 
+            read_data (list): 1D list of Shared Memory data.
+            data_size (int): Shared Memory Size.
+            data_sub_size (int, optional): Shared Memory sub element size; used for 2D arrays. Defaults to 1.
+            clr_freq (bool, optional): Interpret as Clear Frequency Flag (returns 
                 centerFreq, Noise). Defaults to False.
         """
         packed_data = []
@@ -270,7 +284,7 @@ class ClearFrequencyService():
             #     with mmap.mmap(self.shm_objects[1]['shm_fd'], self.shm_objects[1]['size'], mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE) as m_restrict:  
                     
             for obj in self.shm_objects:
-                obj['shm_ptr'] = mmap.mmap(self.shm_objects[0]['shm_fd'], self.shm_objects[0]['size'], mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE)
+                obj['shm_ptr'] = mmap.mmap(obj['shm_fd'], obj['size'], mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE)
             
             # Await for a Client Request
             print("[clearFrequencyService] Awaiting Client Request...\n")
@@ -325,6 +339,17 @@ class ClearFrequencyService():
             print("[clearFrequencyService] Requesting Server Response...")
             # self.sem_server.release()
             self.semaphores[1]['sem'].release()
+            
+            # Read-in Clear Freq data
+            print("[clearFrequencyService] Awaiting Clear Freq data...")
+            self.semaphores[2]['sem'].acquire()
+            print("[clearFrequencyService] Recieved Clear Freq data...")
+            new_noise_data = []
+            new_clrfreq_data = self.read_m_data(self.shm_objects[2], self.CLR_BAND_ELEM_NUM)
+            new_clrfreq_data, new_noise_data = self.repack_data(new_clrfreq_data, True)
+            for clr_freq in zip(new_clrfreq_data, new_noise_data):
+                print(f"[clearFrequencyService] Clear Freq Band: | {clr_freq[0]} (Hz), {clr_freq[1]} (N/A) |")
+            
         except KeyboardInterrupt:
             print("[clearFrequencyService] Keyboard interrupt received. Exiting...")
         finally:

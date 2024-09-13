@@ -21,7 +21,7 @@
 
 #define RESTRICT_SHM_SIZE (RESTRICT_NUM * 2 * sizeof(int))          // 2 = start and end freqs
 #define SAMPLES_SHM_SIZE (ANTENNAS_NUM * SAMPLES_NUM * sizeof(int)) // TODO: Finish 2x2500 test
-#define CLR_BANDS_SHM_SIZE (CLR_BANDS_MAX * 4 * 2)         // TODO: Round to convert freqs to int again 
+#define CLR_BANDS_SHM_SIZE (CLR_BANDS_MAX * 4 * 3)         // TODO: Round to convert freqs to int again 
 // #define SAMPLES_SHM_SIZE (2 * SAMPLES_NUM * ANTENNAS_NUM * sizeof(int))  // Size for a 2x14x2500 array of integers
 
 // Shared Memory and Semaphore Names 
@@ -36,7 +36,7 @@
 #define SEM_SAMPLES "/sem_samples"              // For Data locking b/w write/reads
 #define SEM_INIT    "/sem_init"                 // init = initialization
 #define SEM_CLRFREQ "/sem_clrfreq"
-#define SEM_NUM 5
+#define SEM_NUM 6
 
 typedef struct shm_obj{
     const char* name;
@@ -280,11 +280,11 @@ int main() {
     // Continuously Send and Receive messages via Shared Memory
     while (1) {
         printf("[Frequency Server] Requesting new client to respond...\n\n");
-        sem_post(semaphores[0]->sem); 
+        sem_post(s_client.sem); 
         
         // TODO: Client writes to param shm
         printf("[Frequency Server] Awaiting client response...\n");
-        sem_wait(semaphores[1]->sem);   
+        sem_wait(s_server.sem);   
 
         // TODO: Add Param Buffer for meta data and clear freq range
         printf("[Frequency Server] Processing client frequency data...\n");
@@ -300,14 +300,17 @@ int main() {
 
         // Process data for clear freqs and store result
         clear_freq_search(temp_samples, clr_bands, restricted_freq, RESTRICT_NUM);
-        write_clrfreq_shm(clr_bands, clrfreq_obj.shm_ptr);
         // XXX: Store result into radar table here
         printf("[Frequency Server] Clear Freq Bands updated...\n");
         
         // Write data to Shared Memory
-        printf("[Frequency Server] Writing frequency data to Shared Memory...\n");
-        
-        printf("[Frequency Server] Processed Client response successfully...\n");
+        printf("[Frequency Server] Writing clear frequency data to Shared Memory...\n");
+        write_clrfreq_shm(clr_bands, clrfreq_obj.shm_ptr);
+        if (msync(clrfreq_obj.shm_ptr, CLR_BANDS_SHM_SIZE, MS_SYNC) == -1) {    // Synchronize data writes with program counter
+            perror("msync failed");
+        }
+        sem_post(s_data.sem);
+        printf("[Frequency Server] Processed Client successfully...\n");
     }
 
     return 0;
