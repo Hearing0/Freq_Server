@@ -46,8 +46,8 @@ class ClearFrequencyService():
     RESTRICT_SHM_NAME = "/restricted_freq"
     CLR_FREQ_SHM_NAME = "/clear_freq"
     
-    SEM_SERVER     = "/sem_server"              # For Sync and reserving client and server roles during data transfer 
-    SEM_CLIENT     = "/sem_client"
+    SEM_CLIENT     = "/sem_client"              # For Sync and reserving client and server roles during data transfer 
+    SEM_SERVER     = "/sem_server"              
     SEM_DATA       = "/sem_data"                # For multiple data transfers on single instance
     SEM_SAMPLES    = "/sem_samples"             # For Data locking b/w write/reads
     SEM_INIT       = "/sem_init"                # init = initialization
@@ -75,6 +75,7 @@ class ClearFrequencyService():
             obj['shm_fd'] = self.initialize_shared_memory(obj['name'])
         self.sem_client = self.semaphores[0]['sem']
         self.sem_server = self.semaphores[1]['sem']
+        self.sem_data   = self.semaphores[2]['sem']
         # self.sem_server, self.sem_client = self.semaphores[1]['sem'], self.semaphores[0]['sem']
         # self.sem_server, self.sem_client = self.initialize_semaphores()
                 
@@ -337,13 +338,13 @@ class ClearFrequencyService():
             
             # Request Server 
             print("[clearFrequencyService] Requesting Server Response...")
-            # self.sem_server.release()
-            self.semaphores[1]['sem'].release()
+            self.sem_server.release()
+            # self.semaphores[1]['sem'].release()
             
             # Read-in Clear Freq data
-            print("[clearFrequencyService] Awaiting Clear Freq data...")
-            self.semaphores[2]['sem'].acquire()
-            print("[clearFrequencyService] Recieved Clear Freq data...")
+            print("[clearFrequencyService] Awaiting Server Response...")
+            self.sem_data.acquire()
+            print("[clearFrequencyService] Recieved Server Response. Reading Clear Freq data...")
             new_noise_data = []
             new_clrfreq_data = self.read_m_data(self.shm_objects[2], self.CLR_BAND_ELEM_NUM)
             new_clrfreq_data, new_noise_data = self.repack_data(new_clrfreq_data, True)
