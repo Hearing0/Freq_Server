@@ -30,6 +30,7 @@
 #define SPECTRAL_AVGING 1
 #define TEST_SAMPLES 1
 #define TEST_CLR_RANGE 1
+// TODO: Add flag to record spectrum over time
 
 #include "../utils/misc_read_writes.c" // Pulls Debug Testing Data
 
