@@ -28,7 +28,7 @@
 // Debug Flags
 #define VERBOSE 1
 #define SPECTRAL_AVGING 1
-#define TEST_SAMPLES 1
+#define TEST_SAMPLES 0
 #define TEST_CLR_RANGE 1
 // TODO: Add flag to record spectrum over time
 
@@ -239,9 +239,13 @@ void find_clear_freqs(double *spectrum, sample_meta_data meta_data, double delta
 
     // Define Range of Clear Freq Search 
     int spectrum_sample_start = (int) ((meta_data.usrp_fcenter * 1000 - meta_data.usrp_rf_rate / 2) / delta_f);
+    int spectrum_sample_end = (int) ((meta_data.usrp_fcenter * 1000 + meta_data.usrp_rf_rate / 2) / delta_f);
     int clr_search_sample_start = (int) (f_start / delta_f) - spectrum_sample_start;
     int clr_search_sample_end = (int) (f_end / delta_f) - spectrum_sample_start;
-    // printf("sample starts: %d, %d, %d\n", spectrum_sample_start, clr_search_sample_start, clr_search_sample_end);
+    if (clr_search_sample_start < 0) clr_search_sample_start = 0;
+    else if (clr_search_sample_start > spectrum_sample_end) clr_search_sample_start = spectrum_sample_end;
+    if (clr_search_sample_end < 0) clr_search_sample_end = 0;
+    else if (clr_search_sample_end > spectrum_sample_end) clr_search_sample_end = spectrum_sample_end;
 
     // Trim Spectrum Data to only Clear Search Range (Used for convolving)
     int clr_search_sample_bw = clr_search_sample_end - clr_search_sample_start;
@@ -283,7 +287,7 @@ void find_clear_freqs(double *spectrum, sample_meta_data meta_data, double delta
     for (int i = 0; i < CLR_BANDS_MAX; i++) {
         clr_bands[i].f_start = clr_search_sample_start * delta_f - (meta_data.usrp_rf_rate / 2) + meta_data.usrp_fcenter * 1000;
         clr_bands[i].f_end = clr_search_sample_end * delta_f - (meta_data.usrp_rf_rate / 2) + meta_data.usrp_fcenter * 1000;
-        clr_bands[i].noise = RAND_MAX;
+        clr_bands[i].noise = 0; // XXX: Logic Flip
     };
     int min_idx[CLR_BANDS_MAX];
     
@@ -301,7 +305,7 @@ void find_clear_freqs(double *spectrum, sample_meta_data meta_data, double delta
         // Compare curr power with min_powers...
         for (int j = CLR_BANDS_MAX - 1; j >= 0 ; j--) {
             // Update Insert Index; maintaining ascending order 
-            if (curr_band.noise < clr_bands[j].noise && curr_band.noise > 0) {
+            if (curr_band.noise > clr_bands[j].noise && curr_band.noise > 0 && curr_band.noise < RAND_MAX) { // XXX: Logic Flip
                 insert_idx = j;
             }
             // Check for Intersecting Band; get intersecting clr_band index
@@ -640,6 +644,15 @@ clear_freq clear_freq_search(fftw_complex **raw_samples, freq_band *clr_bands, f
     );       
     printf("n_beams: %d\nbeam_sep: %f\nbeam_num: %d\n", n_beams, beam_sep, beam_num);
 
+    // Check last sample
+    // fftw_complex sample = raw_samples[meta_data.num_antennas - 1][meta_data.number_of_samples - 1];
+    // printf("raw_samples[%d][%d]: %f + %fi\n", meta_data.num_antennas - 1, meta_data.number_of_samples - 1, creal(sample), cimag(sample));
+    // Should be raw_samples[13][2499]: -134.000000 + 168.000000i
+
+
+    // XXX: Define other parameters
+    // double restricted_frequencies[] = { 0,0 };
+    // double beam_angle = calc_beam_angle(n_beams, beam_num, beam_sep);  
     double clear_freq_range[] = { 12 * pow(10,6), 12.5 * pow(10,6) };
     double beam_angle = 0.08482300164692443;        // in radians
     double smsep = .0003; // 1 / (2 * 250 * pow(10, 3));      // ~4 ms
