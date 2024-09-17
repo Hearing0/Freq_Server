@@ -161,14 +161,15 @@ void write_clrfreq_shm(freq_band *clr_bands, int *ptr) {
  * @param  shm_obj: Shared Memory Object struct.
  * @retval None
  */
-void clean(shm_obj shm_obj) {
+void clean_obj(shm_obj shm_obj) {
     if (shm_obj.shm_ptr) munmap(shm_obj.shm_ptr, shm_obj.size);
     if (shm_obj.shm_fd >= 0) close(shm_obj.shm_fd);
     sem_unlink(shm_obj.name);
 }
 
 void clean_sem(semaphore sem) {
-    if ((sem.sem)) sem_close( (sem.sem));
+    if ((sem.sem)) sem_close(sem.sem);
+    sem_unlink(sem.name);
 }
 
 /**
@@ -178,12 +179,7 @@ void clean_sem(semaphore sem) {
  */
 void cleanup() {
     for (int i = 0; i < SEM_NUM; i++) clean_sem(*semaphores[i]);
-    // if (sem_server) sem_close(sem_server);
-    // if (sem_client) sem_close(sem_client);
-    for (int i = 0; i < PARAM_NUM; i++) clean(*objects[i]);
-
-    sem_unlink(SEM_SERVER);
-    sem_unlink(SEM_CLIENT);
+    for (int i = 0; i < PARAM_NUM; i++) clean_obj(*objects[i]);
 }
 
 /**
