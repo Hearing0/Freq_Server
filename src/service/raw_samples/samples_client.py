@@ -6,7 +6,7 @@ import posix_ipc
 import pickle       # To read in pickle test samples
 import numpy as np
 
-RESTRICT_FILE = "/home/radar/repos/Freq_Server/utils/misc_param/restrict.dat.inst"
+RESTRICT_FILE = "/home/df/Desktop/PSU-SuperDARN/Freq_Server/utils/misc_param/restrict.dat.inst"
 
 # Used to mimick USRP functionality
 def read_restrict_file(restrict_file):
@@ -431,7 +431,7 @@ def read_sample_pickle(pickle_file):
 
 
 
-raw_samples, meta_data = read_sample_pickle("/home/radar/repos/Freq_Server/utils/pickle_input/clrfreq_dump.1.pickle")
+raw_samples, meta_data = read_sample_pickle("/home/df/Desktop/PSU-SuperDARN/Freq_Server/utils/pickle_input/clrfreq_dump.1.pickle")
 
 # Send Empty sample info
 CFS = ClearFrequencyService()

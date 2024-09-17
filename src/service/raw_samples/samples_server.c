@@ -10,6 +10,7 @@
 #include <complex.h>
 #include <fftw3.h>      // FFT transform library
 #include <signal.h>
+#include <time.h>
 #include "../../clear_freq_search.c"
 
 #define SAMPLES_NUM 2500
@@ -18,6 +19,8 @@
 #ifndef CLR_BANDS_MAX
 #define CLR_BANDS_MAX 6
 #endif
+#define CLR_STORAGE_NUM 5
+#define CLR_STORE_FILEPATH "../../../utils/csv_dump/clr_band_storage/"
 
 #define RESTRICT_SHM_SIZE (RESTRICT_NUM * 2 * sizeof(int))          // 2 = start and end freqs
 #define SAMPLES_SHM_SIZE (ANTENNAS_NUM * SAMPLES_NUM * sizeof(int)) // TODO: Finish 2x2500 test
@@ -200,6 +203,48 @@ void handle_sigint(int sig) {
     exit(0);
 }
 
+void write_clr_log_csv(freq_band **clr_storage, int clr_num) {
+    // Timestamp Variables
+    time_t raw_time;
+    struct tm *time_info;
+    int buffer_size = 100;
+    char timestamp[buffer_size];
+    char name[buffer_size]; 
+
+    // Generate timestamp
+    time(&raw_time);
+    time_info = localtime(&raw_time);
+    strftime(timestamp, buffer_size, "%Y.%m.%d_%H:%M:%S", time_info);
+    snprintf(name, sizeof(name), "utils/csv_dump/clr_log/clrlog_%s.csv", timestamp);
+
+    // Generate clear log file
+    FILE *file = fopen(name, "w");
+    if (file == NULL) {
+        perror("Error opening file for writing");
+        exit(EXIT_FAILURE);
+    }
+    fprintf(file, "Start Frequency,End Frequency,Noise,Clear Freq Start,Clear Freq End\n");
+    for (int clr_batch_idx = 0; clr_batch_idx < clr_num; clr_batch_idx++) {
+        freq_band *clr_bands = clr_storage[clr_batch_idx];
+
+        // Find Start and End of Clear Freq Range
+        int clr_start = RAND_MAX;
+        int clr_end = 0;
+        for (int i = 0; i < CLR_BANDS_MAX; i++) {
+            if (clr_bands[i].f_start < clr_start && clr_bands[i].noise < RAND_MAX) clr_start = clr_bands[i].f_start;
+            if (clr_bands[i].f_end > clr_end && clr_bands[i].noise < RAND_MAX) clr_end = clr_bands[i].f_end;
+        }    
+
+        // Record each Clear Freq
+        for (int i = 0; i < CLR_BANDS_MAX; i++) {
+            // Special: Print Clear Freq Range on Line 0
+            if (i == 0) fprintf(file, "%d,%d,%f,%d,%d\n", clr_bands[i].f_start, clr_bands[i].f_end, clr_bands[i].noise,clr_start,clr_end);
+            else fprintf(file, "%d,%d,%f\n", clr_bands[i].f_start, clr_bands[i].f_end, clr_bands[i].noise);
+        }
+    }
+
+    fclose(file);
+}
 
 
 int main() {
@@ -276,6 +321,20 @@ int main() {
         perror("Error allocating memory for clr_bands elements");
         exit(EXIT_FAILURE);
     }
+    freq_band **clr_bands_storage = NULL;
+    clr_bands_storage = (freq_band **)malloc(CLR_BANDS_MAX * sizeof(freq_band *));
+    if (clr_bands_storage == NULL) {
+        perror("Error allocating memory for clr_bands_storage pointers");
+        exit(EXIT_FAILURE);
+    }
+    for (int i = 0; i < CLR_STORAGE_NUM; i++) {
+        clr_bands_storage[i] = (freq_band *)malloc(CLR_BANDS_MAX * sizeof(freq_band));
+        if (clr_bands_storage[i] == NULL) {
+            perror("Error allocating memory for clr_bands_storage elements");
+            exit(EXIT_FAILURE);
+        }
+    }
+    int clr_storage_i = 0;
             
     // Continuously Send and Receive messages via Shared Memory
     while (1) {
@@ -303,12 +362,23 @@ int main() {
         // XXX: Store result into radar table here
         printf("[Frequency Server] Clear Freq Bands updated...\n");
         
-        // Write data to Shared Memory
+        /// Write data 
+        // Write to Shared Memory
         printf("[Frequency Server] Writing clear frequency data to Shared Memory...\n");
         write_clrfreq_shm(clr_bands, clrfreq_obj.shm_ptr);
         if (msync(clrfreq_obj.shm_ptr, CLR_BANDS_SHM_SIZE, MS_SYNC) == -1) {    // Synchronize data writes with program counter
             perror("msync failed");
         }
+        printf("[Frequency Server] clrfreq_shm written...\n");
+
+        // Write to clr_log
+        clr_bands_storage[clr_storage_i] = clr_bands;
+        clr_storage_i++;
+        if (clr_storage_i >= CLR_STORAGE_NUM) {
+            write_clr_log_csv(clr_bands_storage, clr_storage_i);
+            clr_storage_i = 0;
+        }
+        printf("Clr Freq Log Batch: %d/%d\n", clr_storage_i, CLR_STORAGE_NUM);
         sem_post(s_data.sem);
         printf("[Frequency Server] Processed Client successfully...\n");
     }
