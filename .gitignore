@@ -1,3 +1,4 @@
-# Commonly Ignored Files 
+# Git Ignored Files 
 *.csv
 *.log
+*.png
