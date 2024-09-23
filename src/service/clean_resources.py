@@ -1,11 +1,15 @@
 import posix_ipc
 
+"""Script for cleaning semaphores and shared memory resources from the Clear Frequency Model. 
+"""
+
 # Shared Memory Object and Semaphores
 SHM_NAMES = {"/samples", "/restricted_freq", "/clear_freq"}
 ACTIVE_CLIENTS_SHM_NAME = "/active_clients"
 SEM_SERVER = "/sem_server"
 SEM_CLIENT = "/sem_client"
 
+@DeprecationWarning
 def cleanup_shared_memory_and_semaphores():
     for SHM_NAME in SHM_NAMES:
         try:

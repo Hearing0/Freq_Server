@@ -15,31 +15,45 @@
 
 #define SAMPLES_NUM 2500
 #define ANTENNAS_NUM 14
-#define RESTRICT_NUM 16             // Number of restricted freq bands in the restrict.dat.inst
+#define RESTRICT_NUM 15 //16             // Number of restricted freq bands in the restrict.dat.inst
 #ifndef CLR_BANDS_MAX
 #define CLR_BANDS_MAX 6
 #endif
 #define CLR_STORAGE_NUM 5
 #define CLR_STORE_FILEPATH "../../../utils/csv_dump/clr_band_storage/"
 
-#define RESTRICT_SHM_SIZE (RESTRICT_NUM * 2 * sizeof(int))          // 2 = start and end freqs
-#define SAMPLES_SHM_SIZE (ANTENNAS_NUM * SAMPLES_NUM * sizeof(int)) // TODO: Finish 2x2500 test
-#define CLR_BANDS_SHM_SIZE (CLR_BANDS_MAX * 4 * 3)         // TODO: Round to convert freqs to int again 
-// #define SAMPLES_SHM_SIZE (2 * SAMPLES_NUM * ANTENNAS_NUM * sizeof(int))  // Size for a 2x14x2500 array of integers
+#define SAMPLES_SHM_SIZE    (ANTENNAS_NUM * SAMPLES_NUM * sizeof(int)) // TODO: Finish 2x2500 test
+#define CLR_RANGE_SHM_SIZE  (2 * sizeof(int))
+#define FCENTER_SHM_SIZE    (1 * sizeof(int))
+#define BEAM_NUM_SHM_SIZE   (1 * sizeof(int))
+#define SAMPLE_SEP_SHM_SIZE (1 * sizeof(double))
+#define RESTRICT_SHM_SIZE   (RESTRICT_NUM * 2 * sizeof(int))          // 2 = start and end freqs
+#define META_DATA_SHM_SIZE  (5 * sizeof(double))
+#define CLR_BANDS_SHM_SIZE  (CLR_BANDS_MAX * 4 * 3)     // TODO: Round to convert freqs to int again 
 
 // Shared Memory and Semaphore Names 
-#define SAMPLES_SHM_NAME    "/samples"
-#define RESTRICT_SHM_NAME   "/restricted_freq"
-#define CLRFREQ_SHM_NAME    "/clear_freq"
-#define PARAM_NUM 3
+#define SAMPLES_SHM_NAME        "/samples"
+#define CLR_RANGE_SHM_NAME      "/clear_freq_range"
+#define FCENTER_SHM_NAME        "/fcenter"
+#define BEAM_NUM_SHM_NAME       "/beam_num"
+#define SAMPLE_SEP_SHM_NAME     "/sample_sep"
+#define RESTRICT_SHM_NAME       "/restricted_freq"
+#define META_DATA_SHM_NAME      "/meta_data"
+#define CLRFREQ_SHM_NAME        "/clear_freq"
+#define SAMPLE_PARAM_NUM 5
+#define RESTRICT_PARAM_NUM 2
+#define PARAM_NUM 8
 
-#define SEM_CLIENT  "/sem_client"               // For Sync and reserving client and server roles during data transfer
-#define SEM_SERVER  "/sem_server"               
-#define SEM_DATA    "/sem_data"                 // For multiple data transfers on single instance 
-#define SEM_SAMPLES "/sem_samples"              // For Data locking b/w write/reads
-#define SEM_INIT    "/sem_init"                 // init = initialization
-#define SEM_CLRFREQ "/sem_clrfreq"
-#define SEM_NUM 6
+#define SEM_F_CLIENT    "/sf_client"               // For Sync and reserving client and server roles during data transfer
+#define SEM_F_SERVER    "/sf_server"    
+#define SEM_F_SAMPLES   "/sf_samples"
+#define SEM_F_INIT      "/sf_init"           
+#define SEM_F_CLRFREQ   "/sf_clrfreq"              // For multiple data transfers on single instance 
+#define SEM_L_SAMPLES   "/sl_samples"              // For Data locking b/w write/reads
+#define SEM_L_INIT      "/sl_init"                 // init = initialization
+#define SEM_L_CLRFREQ   "/sl_clrfreq"
+#define SL_NUM 3
+#define SEM_NUM 8
 
 typedef struct shm_obj{
     const char* name;
@@ -63,36 +77,49 @@ typedef struct semaphore {
 // TODO: Num of Radar {has table of all beam dirc {has Clr freq in beam direction}}} while sharing restricting assigned freq 
 // TODO: Rewrite of usrp sample send/clr freq request timing logic 
 
-struct semaphore s_client   = {SEM_CLIENT,  NULL};
-struct semaphore s_server   = {SEM_SERVER,  NULL};
-struct semaphore s_data     = {SEM_DATA,    NULL};
-struct semaphore s_samples  = {SEM_SAMPLES, NULL};
-struct semaphore s_init     = {SEM_INIT,    NULL};
-struct semaphore s_clrfreq  = {SEM_CLRFREQ, NULL};
+// Semaphores Locks prevent race conditions
+// Semaphore Flags allow client and server to signal specific data transfers
+struct semaphore sf_client   = {SEM_F_CLIENT,  NULL};
+struct semaphore sf_server   = {SEM_F_SERVER,  NULL};
+struct semaphore sf_samples  = {SEM_F_SAMPLES, NULL};
+struct semaphore sf_init     = {SEM_F_INIT,    NULL};
+struct semaphore sf_clrfreq  = {SEM_F_CLRFREQ, NULL};
+struct semaphore sl_samples  = {SEM_L_SAMPLES, NULL};
+struct semaphore sl_init     = {SEM_L_INIT,    NULL};
+struct semaphore sl_clrfreq  = {SEM_L_CLRFREQ, NULL};
 struct semaphore *semaphores[SEM_NUM] = {
-    &s_client,
-    &s_server,    
-    &s_data,
-    &s_samples,
-    &s_init,
-    &s_clrfreq,
+    &sf_client,
+    &sf_server,    
+    &sf_samples,
+    &sf_init,
+    &sf_clrfreq,
+    &sl_samples,
+    &sl_init,
+    &sl_clrfreq,
 };
 
 shm_obj samples_obj = {SAMPLES_SHM_NAME, NULL, -1, SAMPLES_SHM_SIZE};
+shm_obj clr_range_obj = {CLR_RANGE_SHM_NAME, NULL, -1, CLR_RANGE_SHM_SIZE};
+shm_obj fcenter_obj = {FCENTER_SHM_NAME, NULL, -1, FCENTER_SHM_SIZE};
+shm_obj beam_num_obj = {BEAM_NUM_SHM_NAME, NULL, -1, BEAM_NUM_SHM_SIZE};
+shm_obj sample_sep_obj = {SAMPLE_SEP_SHM_NAME, NULL, -1, SAMPLE_SEP_SHM_SIZE};
 shm_obj restrict_obj = {RESTRICT_SHM_NAME, NULL, -1, RESTRICT_SHM_SIZE};
+shm_obj meta_obj = {META_DATA_SHM_NAME, NULL, -1, META_DATA_SHM_SIZE};
 shm_obj clrfreq_obj = {CLRFREQ_SHM_NAME, NULL, -1, CLR_BANDS_SHM_SIZE};
 struct shm_obj *objects[PARAM_NUM] = {
-    &samples_obj, 
-    &restrict_obj, 
+    &samples_obj,
+    &clr_range_obj,
+    &fcenter_obj,
+    &beam_num_obj,
+    &sample_sep_obj,
+    &restrict_obj,
+    &meta_obj,
     &clrfreq_obj,
 };
 
 
 
 
-
-// TODO: Read shm_obj ptr into temp_data
-// Note: obj and data must be the same data type
 void read_restrict_shm(freq_band *restricted_freq, int *restrict_shm_ptr) {
     for (int i = 0; i < RESTRICT_NUM; i++)
     {
@@ -162,13 +189,16 @@ void write_clrfreq_shm(freq_band *clr_bands, int *ptr) {
  * @retval None
  */
 void clean_obj(shm_obj shm_obj) {
-    if (shm_obj.shm_ptr) munmap(shm_obj.shm_ptr, shm_obj.size);
-    if (shm_obj.shm_fd >= 0) close(shm_obj.shm_fd);
+    // if (shm_obj.shm_ptr) 
+    munmap(shm_obj.shm_ptr, shm_obj.size);
+    // if (shm_obj.shm_fd >= 0) 
+    close(shm_obj.shm_fd);
     sem_unlink(shm_obj.name);
 }
 
 void clean_sem(semaphore sem) {
-    if ((sem.sem)) sem_close(sem.sem);
+    // if ((sem.sem)) 
+    sem_close(sem.sem);
     sem_unlink(sem.name);
 }
 
@@ -280,7 +310,8 @@ int main() {
     // Open Semaphores for synchronization     
     printf("[Frequency Server] Opening Communication Semaphores...\n");    
     for (int i = 0; i < SEM_NUM; i++) {
-        semaphores[i]->sem = sem_open(semaphores[i]->name, O_CREAT, 0666, 0);
+        if (i < (SEM_NUM - SL_NUM)) semaphores[i]->sem = sem_open(semaphores[i]->name, O_CREAT, 0666, 0);
+        else semaphores[i]->sem = sem_open(semaphores[i]->name, O_CREAT, 0644, 1);
         if (semaphores[i]->sem == SEM_FAILED) {
             printf("[Frequency Server] \"%s\" sem_open failed.\n", semaphores[i]->name);
             exit(EXIT_FAILURE);    
@@ -332,51 +363,72 @@ int main() {
     }
     int clr_storage_i = 0;
             
-    // Continuously Send and Receive messages via Shared Memory
+    // Continuously process clients via shared memory
     while (1) {
         printf("[Frequency Server] Requesting new client to respond...\n\n");
-        sem_post(s_client.sem); 
+        sem_post(sf_client.sem); 
         
-        // TODO: Client writes to param shm
         printf("[Frequency Server] Awaiting client response...\n");
-        sem_wait(s_server.sem);   
+        sem_wait(sf_server.sem);   
 
-        // TODO: Add Param Buffer for meta data and clear freq range
-        printf("[Frequency Server] Processing client frequency data...\n");
-        // Debug: Print Shared Memory
-        // for (int i = 0; i < 6; i += 2) printf("    %d + j%d\n", samples_obj.shm_ptr[i], samples_obj.shm_ptr[i+1]);
-        // for (int i = 0; i < RESTRICT_NUM; i++) printf("    restrict[%d]: %d\n", i, restrict_obj.shm_ptr[i]);
+        // If initialization data flagged, read and store data
+        if (sem_trywait(sf_init.sem)){
+            printf("[Frequency Server] Awaiting initialization data unlock...\n");
+            sem_wait(sl_init.sem);
+            printf("[Frequency Server] Initialization data read...\n");
+            read_restrict_shm(restricted_freq, restrict_obj.shm_ptr);
+            // read(meta_data)
+            sem_post(sl_init.sem);
+            printf("[Frequency Server] Initialization data read; processing...\n");
+            // storeInRadarTable(restrict_freq, meta_data)
+            printf("[Frequency Server] Initialization data processed...\n");
+        }
+        // If samples flagged (& intialized), process clear frequency
+        if (sem_trywait(sf_samples.sem) && restricted_freq != NULL){
+            // Wait to read-in data
+            printf("[Frequency Server] Awaiting sample data unlock...\n");
+            sem_wait(sl_samples.sem);
+            printf("[Frequency Server] Processing client sample data...\n");
+            read_sample_shm(temp_samples, samples_obj.shm_ptr);
+            // read_clr_range_shm(clr_range, ...);
+            // read ...
+            read_restrict_shm(restricted_freq, restrict_obj.shm_ptr);
+            sem_post(sl_samples.sem);
 
-        // Read data in
-        read_sample_shm(temp_samples, samples_obj.shm_ptr);
-        read_restrict_shm(restricted_freq, restrict_obj.shm_ptr);
-        // TODO: Add the rest of meta data storing (clear_freq_range, etc.)
-        printf("[Frequency Server; from Client] \n");
+            // store sample data for debugging
+            // debug function here
 
-        // Process data for clear freqs and store result
-        clear_freq_search(temp_samples, clr_bands, restricted_freq, RESTRICT_NUM);
-        // XXX: Store result into radar table here
-        printf("[Frequency Server] Clear Freq Bands updated...\n");
+            // Process Clear Freq
+            clear_freq_search(temp_samples, clr_bands, restricted_freq, RESTRICT_NUM);
+            // update_clr_table(clr_bands);
+            
+            // Write Clear Freq Data
+            printf("[Frequency Server] Writing clear frequency data to Shared Memory...\n");
+            sem_wait(sl_clrfreq.sem);
+            write_clrfreq_shm(clr_bands, clrfreq_obj.shm_ptr);
+            if (msync(clrfreq_obj.shm_ptr, CLR_BANDS_SHM_SIZE, MS_SYNC) == -1) {    // Synchronize data writes with program counter
+                perror("msync failed");
+            }
+            printf("[Frequency Server] clrfreq_shm written...\n");
+            sem_post(sl_clrfreq.sem);
+            sem_post(sf_clrfreq.sem);
+            printf("[Frequency Server] Processed Clear Freq Request successfully...\n");
+
+            // Debug: Store prior clear freq band sets
+            clr_bands_storage[clr_storage_i] = clr_bands;
+            clr_storage_i++;
+            if (clr_storage_i >= CLR_STORAGE_NUM) {
+                write_clr_log_csv(clr_bands_storage, clr_storage_i);
+                clr_storage_i = 0;
+            }
+            printf("[Frequency Server] Clr Freq Log Batch: %d/%d\n", clr_storage_i, CLR_STORAGE_NUM);
+        }
+        else if (restricted_freq == NULL) {
+            printf("[Frequency Server] ERROR: Called for Clear Freq without prior Initialization\n");
+        }
         
-        /// Write data 
-        // Write to Shared Memory
-        printf("[Frequency Server] Writing clear frequency data to Shared Memory...\n");
-        write_clrfreq_shm(clr_bands, clrfreq_obj.shm_ptr);
-        if (msync(clrfreq_obj.shm_ptr, CLR_BANDS_SHM_SIZE, MS_SYNC) == -1) {    // Synchronize data writes with program counter
-            perror("msync failed");
-        }
-        printf("[Frequency Server] clrfreq_shm written...\n");
-
-        // Write to clr_log
-        clr_bands_storage[clr_storage_i] = clr_bands;
-        clr_storage_i++;
-        if (clr_storage_i >= CLR_STORAGE_NUM) {
-            write_clr_log_csv(clr_bands_storage, clr_storage_i);
-            clr_storage_i = 0;
-        }
-        printf("Clr Freq Log Batch: %d/%d\n", clr_storage_i, CLR_STORAGE_NUM);
-        sem_post(s_data.sem);
         printf("[Frequency Server] Processed Client successfully...\n");
+
     }
 
     return 0;

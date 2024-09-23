@@ -1,4 +1,8 @@
-# Git Ignored Files 
+# Ignored Files 
+__pycache__
+
+# Ignored Extensions
 *.csv
 *.log
 *.png
+
