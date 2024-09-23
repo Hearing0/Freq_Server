@@ -42,6 +42,7 @@ class ClearFrequencyService():
     ANTENNAS_NUM = 2                                    # 14 for real
     RESTRICT_NUM = 15
     # RESTRICT_ELEM_NUM = RESTRICT_NUM * 2                # 2 = start & stop of restrict freq band
+    
     CLR_BAND_MAX = 6
     
     SAMPLES_ELEM_NUM =  ANTENNAS_NUM * SAMPLES_NUM
@@ -259,21 +260,26 @@ class ClearFrequencyService():
         # If ___ flags are on, trigger its function
         
            
-    def write_m_data(self, obj, array_data, complex=False):
+    def write_data(self, obj, array_data, complex=False):
         try:    
+            flattened_data = []
             if complex:
                 # If complex, flatten and separate real and imaginary parts
                 # flattened_data = np.column_stack((array_data.real.flatten(), array_data.imag.flatten())).flatten()
                 for antenna_sample in array_data:  
                     # print("[Frequency Client] sample_arr len: ", len(antenna_sample))
                     
-                    # TODO: Time trial w/ zip(sample.real, sample.imag)
+                    # TODO: Time trial w/ zip(int(sample.real), int(sample.imag))
                     for sample in antenna_sample:
                         flattened_data.append(int(sample.real))
                         flattened_data.append(int(sample.imag))
+                        
+                        # Debug: Display samples
+                        # print("[Frequency Client] Flattening samples: ", sample)
+                        # print("[Frequency Client]                   : ", new_data[-2])
+                        # print("[Frequency Client]                   : ", new_data[-1])
             else:
                 # Otherwise, just flatten
-                flattened_data = []
                 if type(array_data[0]) is list:  
                     for row in array_data:
                         flattened_data += row
@@ -283,7 +289,7 @@ class ClearFrequencyService():
             print("[Frequency Client] new_data len of: ", len(flattened_data))
             print("[Frequency Client] Writing sample data:\n", flattened_data[:10], "...")
             obj['shm_ptr'].seek(0)
-            obj['shm_ptr'].write(struct.pack('i' * obj['elem_size'], *flattened_data))   
+            obj['shm_ptr'].write(struct.pack('i' * obj['elem_num'], *flattened_data))   
             
         except AttributeError:
             print("[Frequency Client] ERROR: Element Size is incorrect. send()'s parameters were likely not assigned properly. Please verify...")
@@ -379,10 +385,13 @@ class ClearFrequencyService():
             self.sf_client['sem'].acquire()
             print("[clearFrequencyService] Acquired Client Request...")
             
-            if restrict_data is not None:
+            # Check & Send Initialization Data
+            if restrict_data is not None or meta_data is not None:
                 self.sl_init['sem'].acquire()
                 
                 if restrict_data is not None:    
+                    # self.write_m_data(self.shm_objects[5], [(int(x)) for x in restrict_data])
+                    
                     new_restrict_data = []
                     # print("[Frequency Client] restrict_arr len: ", len(restrict_data))
                     for restricted_freq in restrict_data:   
@@ -392,6 +401,15 @@ class ClearFrequencyService():
                     print("[Frequency Client] Writing restricted freq data:\n", restrict_data[:2], "...")
                     self.shm_objects[5]['shm_ptr'].seek(0)
                     self.shm_objects[5]['shm_ptr'].write(struct.pack('i' * (self.RESTRICT_NUM * 2), *new_restrict_data))
+                  
+                # TODO: write to meta_data after adding auto-padding to samples for num_antenna  
+                # if meta_data is not None:
+                #     new_meta_data = []
+                    
+                #     for data in meta_data:
+                #         new_meta_data += int(data)
+                    
+                    
                     
                 self.sl_init['sem'].release()
                 self.sf_init['sem'].release()
@@ -401,38 +419,33 @@ class ClearFrequencyService():
                 print("[clearFrequencyService] Awaiting Sample Semphore Lock...")
                 self.sl_samples['sem'].acquire()
                 
-                # self.write_m_data(self.shm_objects[0]['shm_ptr'], raw_samples[:1], (self.ANTENNAS_NUM * self.SAMPLES_NUM), complex = True)
+                trimmed_samples = raw_samples[:1]           #HACK: writes only first antenna's samples; write all antenna samples
+                self.write_data(self.shm_objects[0], trimmed_samples, complex = True)
                 
                 # Flatten data arrays for SHM writing 
-                print("[Frequency Client] Repacking data to Shared Memory...")    
-                trimmed_samples = raw_samples[:1]           #HACK: writes only first antenna's samples; write all antenna samples
-                print("[Frequency Client] trimmed len: ", len(trimmed_samples))
-                new_sample_data = []
-                for antenna_sample in trimmed_samples:  
-                    print("[Frequency Client] sample_arr len: ", len(antenna_sample))
-                    for sample in antenna_sample:
-                        new_sample_data.append(int(sample.real))
-                        new_sample_data.append(int(sample.imag))
-                        
-                        # Debug: Display samples
-                        # print("[Frequency Client] Flattening samples: ", sample)
-                        # print("[Frequency Client]                   : ", new_data[-2])
-                        # print("[Frequency Client]                   : ", new_data[-1])
+                # print("[Frequency Client] Repacking data to Shared Memory...")    
+                # print("[Frequency Client] trimmed len: ", len(trimmed_samples))
+                # new_sample_data = []
+                # for antenna_sample in trimmed_samples:  
+                #     print("[Frequency Client] sample_arr len: ", len(antenna_sample))
+                #     for sample in antenna_sample:
+                #         new_sample_data.append(int(sample.real))
+                #         new_sample_data.append(int(sample.imag))
                         
                 
-                # Write Samples to Shared Memory Object
-                print("[Frequency Client] Writng data to Shared Memory...")    
-                print("[Frequency Client] new_data len of samples: ", len(new_sample_data))
-                print("[Frequency Client] Writing sample data:\n", new_sample_data[:10], "...")
-                self.shm_objects[0]['shm_ptr'].seek(0)
-                self.shm_objects[0]['shm_ptr'].write(struct.pack('i' * (self.ANTENNAS_NUM * self.SAMPLES_NUM), *new_sample_data))
+                # # Write Samples to Shared Memory Object
+                # print("[Frequency Client] Writng data to Shared Memory...")    
+                # print("[Frequency Client] new_data len of samples: ", len(new_sample_data))
+                # print("[Frequency Client] Writing sample data:\n", new_sample_data[:10], "...")
+                # self.shm_objects[0]['shm_ptr'].seek(0)
+                # self.shm_objects[0]['shm_ptr'].write(struct.pack('i' * (self.ANTENNAS_NUM * self.SAMPLES_NUM), *new_sample_data))
 
-                # If given, write that data
+                # If Sample Data given, write it
                 for i in range(self.SAMPLE_PARAM_NUM):
                     print(f"[Frequency Client] Data Write Progress: {i + 1}/{self.SAMPLE_PARAM_NUM} {self.shm_objects[i]['name']}")
                     if i != 0: 
                         if input_data[i] is not None:
-                            self.write_m_data(self.shm_objects[i], input_data[i])
+                            self.write_data(self.shm_objects[i], input_data[i])
                 
                                     
                 # print("[Frequency Client] Writing restricted freq data:\n", restrict_data[:2], "...")
