@@ -6,22 +6,6 @@ import posix_ipc
 import pickle       # To read in pickle test samples
 import numpy as np
 
-RESTRICT_FILE = "/home/df/Desktop/PSU-SuperDARN/Freq_Server/utils/misc_param/restrict.dat.inst"
-
-# Used to mimick USRP functionality
-def read_restrict_file(restrict_file):
-    restricted_frequencies = []
-    with open(restrict_file, 'r') as f:
-        for line in f:
-            if line[0] == '#' or line[0] == 'd' or len(line) < 8:
-                continue
-            line = line.split(' ')
-            restrict_start = int(line[0]) * 1e3 # convert kHz units in restrict to Hz
-            restrict_end = int(line[1]) * 1e3 # convert kHz units in restrict to Hz
-            restricted_frequencies.append([restrict_start, restrict_end])
-
-    return restricted_frequencies; 
-
 
 
 
@@ -52,7 +36,7 @@ class ClearFrequencyService():
     CLR_BANDS_ELEM_NUM = CLR_BAND_MAX * 3                # 2 = start & stop freqs and noise
     
     SAMPLES_SHM_SIZE =    (ANTENNAS_NUM * SAMPLES_NUM * INT_SIZE) 
-    CLR_RANGE_SHM_SIZE =  (2 * INT_SIZE)
+    CLR_RANGE_SHM_SIZE =  (2 * DOUBLE_SIZE)
     FCENTER_SHM_SIZE =    (1 * INT_SIZE)
     BEAM_NUM_SHM_SIZE =   (1 * INT_SIZE)
     SAMPLE_SEP_SHM_SIZE = (1 * DOUBLE_SIZE)
@@ -255,11 +239,67 @@ class ClearFrequencyService():
             m.write(struct.pack('i', active_clients))
             print(f"[clearFrequencyService] Decremented Active Clients Counter: {active_clients}")
             return active_clients
+      
+              
+    def detect_dtype(self, var):
+        """Recursively detects whether the variable is an int (i) or float (d). 
+        Note that float is considered 'd' so that it can be used for struct.pack()
+
+        Args:
+            var (any): Variable to be detected
+
+        Raises:
+            ValueError: If the variable doesn't contain either ints or floats.
+
+        Returns:
+            _type_: Either 'd' or 'i' for float or int respectively.
+        """
+        # Continuation
+        if isinstance(var, (list, set)):
+            return self.detect_dtype(var[0]) 
         
-    # def write_data():
-        # If ___ flags are on, trigger its function
+        # Break Condition and Break
+        elif isinstance(var, float):
+            return 'd'
+        elif isinstance(var, int):
+            return 'i'
+        else:
+            raise ValueError(f"var ({var}) is contains neither float nor integers.")
+                   
+    def find_list_of_lists(self, var):
+        """Recursively finds the point in the variable where the following 
+        is true:
+        (list_of_list -> list -> elem)
+        This point is hereby called list_of_lists (LoL) for simplicity and is used 
+        to flatten these arrays where applicable. 
         
-           
+        Note this function only works for variables that contain either ints or floats!
+
+        Args:
+            var (any): Variable to be parsed for LoL.
+
+        Raises:
+            ValueError: If the variable doesn't contain either ints or floats.
+
+        Returns:
+            _type_: Can be a list (the list_of_lists), 'd' or 'i' if var is a singular var.
+        """
+        # Continuation
+        if isinstance(var, (list, set)):
+            result = self.find_list_of_lists(var[0])
+            
+            # Break Conditions (return list_of_list->list->elem)
+            if result  == 'elem':
+                return 'list'
+            elif result == 'list':
+                return var
+        
+        # Break
+        elif isinstance(var, (int, float)):
+            return 'elem'
+        else:
+            raise ValueError(f"var ({var}) is contains neither float nor integers.")
+    
     def write_data(self, obj, array_data, complex=False):
         try:    
             flattened_data = []
@@ -276,21 +316,46 @@ class ClearFrequencyService():
                         
                         # Debug: Display samples
                         # print("[Frequency Client] Flattening samples: ", sample)
-                        # print("[Frequency Client]                   : ", new_data[-2])
-                        # print("[Frequency Client]                   : ", new_data[-1])
+                        # print("[Frequency Client]                   : ", flattened_data[-2])
+                        # print("[Frequency Client]                   : ", flattened_data[-1])
             else:
-                # Otherwise, just flatten
-                if type(array_data[0]) is list:  
-                    for row in array_data:
-                        flattened_data += row
-                else: 
-                    flattened_data = array_data
+                # Otherwise, just flatten                
+                list_of_lists = self.find_list_of_lists(array_data)
                 
-            print("[Frequency Client] new_data len of: ", len(flattened_data))
-            print("[Frequency Client] Writing sample data:\n", flattened_data[:10], "...")
-            obj['shm_ptr'].seek(0)
-            obj['shm_ptr'].write(struct.pack('i' * obj['elem_num'], *flattened_data))   
+                # Element/1D List Found
+                if type(list_of_lists) is str:
+                    flattened_data = array_data
+                # Greater-than-1D list Found
+                elif type(list_of_lists) is list: 
+                    print("2D list detected! Flattening...")
+                    for row in list_of_lists:
+                        flattened_data += row
+                # Fail: Unexpected value found
+                else: 
+                    raise ValueError(f"An unexpected value occured: {list_of_lists}")
             
+            
+            dtype = 'i'
+            # Determine dtype for Packing
+            dtype = self.detect_dtype(flattened_data)
+            
+            print(f"dtype: {dtype}, elem_num: {obj['elem_num']}, ")
+                
+            # Pack and write data
+            if type(flattened_data) is list or complex:  
+                print("[Frequency Client] new_data len of: ", len(flattened_data))
+                print("[Frequency Client] Writing data:\n", flattened_data[1], "...")
+                
+                obj['shm_ptr'].seek(0)
+                obj['shm_ptr'].write(struct.pack(dtype * obj['elem_num'], *flattened_data)) 
+            else:
+                print("[Frequency Client] new_data len of: ", 1)
+                print("[Frequency Client] Writing data:\n", flattened_data, "...")
+                
+                obj['shm_ptr'].seek(0)
+                obj['shm_ptr'].write(struct.pack(dtype * 1, flattened_data))
+        
+        
         except AttributeError:
             print("[Frequency Client] ERROR: Element Size is incorrect. send()'s parameters were likely not assigned properly. Please verify...")
             
@@ -368,8 +433,8 @@ class ClearFrequencyService():
         #     self.__init__()
         
         # Special: Find missing data
-        if self.isRestricted is False and restrict_data is None:
-            restrict_data = read_restrict_file(RESTRICT_FILE)
+        # if self.isRestricted is False and restrict_data is None:
+            # restrict_data = read_restrict_file(RESTRICT_FILE)
         
         # Get in Queue
         active_clients = self.increment_active_clients()
@@ -401,7 +466,11 @@ class ClearFrequencyService():
                     print("[Frequency Client] Writing restricted freq data:\n", restrict_data[:2], "...")
                     self.shm_objects[5]['shm_ptr'].seek(0)
                     self.shm_objects[5]['shm_ptr'].write(struct.pack('i' * (self.RESTRICT_NUM * 2), *new_restrict_data))
-                  
+                
+                if sample_sep is not None:
+                    
+                    self.write_data(self.shm_objects[4], sample_sep)
+                
                 # TODO: write to meta_data after adding auto-padding to samples for num_antenna  
                 # if meta_data is not None:
                 #     new_meta_data = []
@@ -419,33 +488,20 @@ class ClearFrequencyService():
                 print("[clearFrequencyService] Awaiting Sample Semphore Lock...")
                 self.sl_samples['sem'].acquire()
                 
-                trimmed_samples = raw_samples[:1]           #HACK: writes only first antenna's samples; write all antenna samples
-                self.write_data(self.shm_objects[0], trimmed_samples, complex = True)
+                self.write_data(self.shm_objects[0], raw_samples, complex = True)
+                print(f"samples_ptr: {int(self.shm_objects[0]['shm_ptr'][0])} + {int(self.shm_objects[0]['shm_ptr'][1])}")
+                print(f"samples_arr: {raw_samples[0]}")
                 
-                # Flatten data arrays for SHM writing 
-                # print("[Frequency Client] Repacking data to Shared Memory...")    
-                # print("[Frequency Client] trimmed len: ", len(trimmed_samples))
-                # new_sample_data = []
-                # for antenna_sample in trimmed_samples:  
-                #     print("[Frequency Client] sample_arr len: ", len(antenna_sample))
-                #     for sample in antenna_sample:
-                #         new_sample_data.append(int(sample.real))
-                #         new_sample_data.append(int(sample.imag))
-                        
-                
-                # # Write Samples to Shared Memory Object
-                # print("[Frequency Client] Writng data to Shared Memory...")    
-                # print("[Frequency Client] new_data len of samples: ", len(new_sample_data))
-                # print("[Frequency Client] Writing sample data:\n", new_sample_data[:10], "...")
-                # self.shm_objects[0]['shm_ptr'].seek(0)
-                # self.shm_objects[0]['shm_ptr'].write(struct.pack('i' * (self.ANTENNAS_NUM * self.SAMPLES_NUM), *new_sample_data))
-
                 # If Sample Data given, write it
-                for i in range(self.SAMPLE_PARAM_NUM):
-                    print(f"[Frequency Client] Data Write Progress: {i + 1}/{self.SAMPLE_PARAM_NUM} {self.shm_objects[i]['name']}")
-                    if i != 0: 
-                        if input_data[i] is not None:
-                            self.write_data(self.shm_objects[i], input_data[i])
+                for i in range(1, self.SAMPLE_PARAM_NUM):
+                    print(f"[Frequency Client] Data Write Progress: {i}/{self.SAMPLE_PARAM_NUM - 1} {self.shm_objects[i]['name']}")
+                    # Special: Write using double
+                    if i == 1 :
+                        self.write_data(self.shm_objects[i], input_data[i])
+                        
+                    # General: Write given input data 
+                    elif input_data[i] is not None:
+                        self.write_data(self.shm_objects[i], input_data[i])
                 
                                     
                 # print("[Frequency Client] Writing restricted freq data:\n", restrict_data[:2], "...")
@@ -532,16 +588,41 @@ def read_sample_pickle(pickle_file):
     
     return raw_samples, sample_meta
 
+# Used to mimick USRP functionality
+def read_restrict_file(restrict_file):
+    restricted_frequencies = []
+    with open(restrict_file, 'r') as f:
+        for line in f:
+            if line[0] == '#' or line[0] == 'd' or len(line) < 8:
+                continue
+            line = line.split(' ')
+            restrict_start = int(line[0]) * 1e3 # convert kHz units in restrict to Hz
+            restrict_end = int(line[1]) * 1e3 # convert kHz units in restrict to Hz
+            restricted_frequencies.append([restrict_start, restrict_end])
 
+    return restricted_frequencies; 
 
 # if __name__ == "__main__":
     # main()
 
 
 
-raw_samples, meta_data = read_sample_pickle("/home/df/Desktop/PSU-SuperDARN/Freq_Server/utils/pickle_input/clrfreq_dump.1.pickle")
 
-# Send Empty sample info
+RESTRICT_FILE = "/home/df/Desktop/PSU-SuperDARN/Freq_Server/utils/misc_param/restrict.dat.inst"
 CFS = ClearFrequencyService()
-CFS.sendSamples(raw_samples, restrict_data=read_restrict_file(RESTRICT_FILE))
+
+raw_samples, meta_data = read_sample_pickle("/home/df/Desktop/PSU-SuperDARN/Freq_Server/utils/pickle_input/clrfreq_dump.1.pickle")
+clear_freq_range = [ int(12 * pow(10,6)), int(12.5 * pow(10,6)) ]
+
+trimmed_samples = raw_samples[:1]         #HACK: writes only first two antenna's samples
+
+restrict_data=read_restrict_file(RESTRICT_FILE),
+
+CFS.sendSamples(trimmed_samples, 
+                clr_range=clear_freq_range, 
+                fcenter=int(meta_data['usrp_fcenter']),
+                beam_num=1,
+                sample_sep=.0003,
+                meta_data=meta_data
+                )
 # CFS.sendSamples(raw_samples)

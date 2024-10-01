@@ -13,8 +13,13 @@
 #include <time.h>
 #include "../../clear_freq_search.c"
 
+// #define INT_SIZE = 4
+// #define DOUBLE_SIZE = 8
+
+
 #define SAMPLES_NUM 2500
 #define ANTENNAS_NUM 14
+#define BEAM_NUM_ELEM 16
 #define RESTRICT_NUM 15 //16             // Number of restricted freq bands in the restrict.dat.inst
 #ifndef CLR_BANDS_MAX
 #define CLR_BANDS_MAX 6
@@ -23,7 +28,7 @@
 #define CLR_STORE_FILEPATH "../../../utils/csv_dump/clr_band_storage/"
 
 #define SAMPLES_SHM_SIZE    (ANTENNAS_NUM * SAMPLES_NUM * sizeof(int)) // TODO: Finish 2x2500 test
-#define CLR_RANGE_SHM_SIZE  (2 * sizeof(int))
+#define CLR_RANGE_SHM_SIZE  (2 * sizeof(double))
 #define FCENTER_SHM_SIZE    (1 * sizeof(int))
 #define BEAM_NUM_SHM_SIZE   (1 * sizeof(int))
 #define SAMPLE_SEP_SHM_SIZE (1 * sizeof(double))
@@ -72,7 +77,10 @@ typedef struct semaphore {
 // Build with the following flags:
 // -lrt -pthread -lfftw3 -lm
 
-// TODO: Read/Write of specific data types (only write samples and restrict vs read clr freq)
+
+
+
+// TODO: Read of specific data types 
 // TODO: Calc all beam directions at recieve of samples
 // TODO: Num of Radar {has table of all beam dirc {has Clr freq in beam direction}}} while sharing restricting assigned freq 
 // TODO: Rewrite of usrp sample send/clr freq request timing logic 
@@ -139,11 +147,11 @@ void read_sample_shm(fftw_complex **temp_samples, int *samples_shm_ptr) {
             temp_samples[i][j] = samples_shm_ptr[i * SAMPLES_NUM + j] + I * samples_shm_ptr[i * SAMPLES_NUM + j + 1];
 
             // Debug: Print 20 complex of each antenna batch
-            // if (j < 20) {
-            //     printf("shm[%d]      =   %d + i%d\n", i * SAMPLES_NUM + j, (int)samples_shm_ptr[i * SAMPLES_NUM + j], (int)samples_shm_ptr[i * SAMPLES_NUM + j + 1]);
-            //     printf("vs\n");
-            //     printf("temp_samples[%d][%d] =  %f + i%f\n\n", i, j, creal(temp_samples[i][j]), cimag(temp_samples[i][j]));
-            // }
+            if (j < 20) {
+                printf("shm[%d]      =   %d + i%d\n", i * SAMPLES_NUM + j, (int)samples_shm_ptr[i * SAMPLES_NUM + j], (int)samples_shm_ptr[i * SAMPLES_NUM + j + 1]);
+                printf("vs\n");
+                printf("temp_samples[%d][%d] =  %f + i%f\n\n", i, j, creal(temp_samples[i][j]), cimag(temp_samples[i][j]));
+            }
         }
     }
 }
@@ -164,6 +172,31 @@ void read_clrfreq_shm(freq_band *clr_bands, int *ptr) {
         clr_bands[i].noise  = ptr[i * elements_per_band + 2];
     }
 }
+
+/**
+ * @brief  Reads shm integer data into the result ptr.
+ * @note   
+ * @param  *result: Destination ptr where data will be stored.
+ * @param  *shm_ptr: Shared Memory Pointer where data will read-in from.
+ * @param  elem_num: Number of elements to read in from shm_ptr. 
+ * @retval None
+ */
+void read_int(void *result, int *shm_ptr, int elem_num) {
+    if (elem_num > 1) {
+        int *result_ptr = (int *) result;
+        for (int i = 0; i < elem_num; i++) {
+            result_ptr[i] = shm_ptr[i];
+            printf("    read_int: %d\n", i);
+        }
+    } else {
+        printf("Error: Use read_int_single() for singleton variables\n");
+    }
+}
+
+void read_int_single(int result, int *shm_ptr) {
+    result = shm_ptr[0];
+}
+
 
 /**
  * @brief  Writes Clear Freq Bands to its shared memory pointer.
@@ -362,6 +395,11 @@ int main() {
         }
     }
     int clr_storage_i = 0;
+    int clr_range[2] = {0};
+    int fcenter = 0;
+    int beam_num[16] = {0};
+    double sample_sep = 0;
+    sample_meta_data meta_data = {0};
             
     // Continuously process clients via shared memory
     while (1) {
@@ -388,10 +426,31 @@ int main() {
             // Wait to read-in data
             printf("[Frequency Server] Awaiting sample data unlock...\n");
             sem_wait(sl_samples.sem);
+
+            // Process Sample relevant data
             printf("[Frequency Server] Processing client sample data...\n");
             read_sample_shm(temp_samples, samples_obj.shm_ptr);
-            // read_clr_range_shm(clr_range, ...);
-            // read ...
+            printf("[Frequency Server] Samples done...\n");
+            
+            if (clr_range_obj.shm_ptr[0] != 0) read_int(clr_range, clr_range_obj.shm_ptr, 2);
+            printf("clr_range: %d -- %d\n", clr_range[0], clr_range[1]);
+            printf("[Frequency Server] Clear Range done...\n");
+
+            if (fcenter_obj.shm_ptr[0] != 0) {
+                // int *fcenter_ptr;
+                read_int_single(fcenter, fcenter_obj.shm_ptr);
+                // fcenter = *fcenter_ptr;
+                printf("fcenter: %d\n", fcenter);
+            }
+            printf("[Frequency Server] Freq Center done...\n");
+
+
+            if (beam_num_obj.shm_ptr[0] != 0) {
+                read_int(beam_num, beam_num_obj.shm_ptr, BEAM_NUM_ELEM);
+                for (int i = 0; i < BEAM_NUM_ELEM; i++) printf("beam_num[%d]: %d\n", i, beam_num[i]);
+            }
+            printf("[Frequency Server] Beam Number done...\n");
+
             read_restrict_shm(restricted_freq, restrict_obj.shm_ptr);
             sem_post(sl_samples.sem);
 
@@ -399,7 +458,13 @@ int main() {
             // debug function here
 
             // Process Clear Freq
-            clear_freq_search(temp_samples, clr_bands, restricted_freq, RESTRICT_NUM);
+            clear_freq_search(
+                temp_samples, 
+                clr_range,
+                restricted_freq, 
+                RESTRICT_NUM,
+                clr_bands                
+            );
             // update_clr_table(clr_bands);
             
             // Write Clear Freq Data

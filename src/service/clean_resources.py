@@ -9,7 +9,7 @@ ACTIVE_CLIENTS_SHM_NAME = "/active_clients"
 SEM_SERVER = "/sem_server"
 SEM_CLIENT = "/sem_client"
 
-@DeprecationWarning
+# @DeprecationWarning
 def cleanup_shared_memory_and_semaphores():
     for SHM_NAME in SHM_NAMES:
         try:
