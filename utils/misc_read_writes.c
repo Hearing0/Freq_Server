@@ -186,7 +186,7 @@ void read_input_data(const char *filename, sample_meta_data *meta_data, double *
             continue;
         }
         
-        // Antenna List
+        // Antenna List Data
         if (strncmp(line, "antenna_list:", 13) == 0) {
             char *token = strtok(line + 14, ",");
             while (token != NULL) {
@@ -201,11 +201,11 @@ void read_input_data(const char *filename, sample_meta_data *meta_data, double *
 
                 token = strtok(NULL, ",");
             }
-            meta_data->num_antennas = 2; //antenna_list_size;
+            meta_data->num_antennas = antenna_list_size;
             continue;
         }
 
-        // Raw Samples
+        // Raw Sample Data
         if (strncmp(line, "raw_samples:", 12) == 0 && TEST_SAMPLES) {
             printf("[Clear Freq Search] Aquiring test four_spectrums from pickle files...\n");
             // Allocate mem
@@ -234,5 +234,45 @@ void read_input_data(const char *filename, sample_meta_data *meta_data, double *
         }
     }
 
+    fclose(file);
+}
+
+void read_restrict(char *filepath, freq_band *restricted_freq, int restricted_num) {
+    FILE *file = fopen(filepath, "r");
+    if (file == NULL) {
+        perror("Error opening file");
+        exit(EXIT_FAILURE);
+    }
+
+    char line[256];
+    int r1 = 0;
+    int r2 = 0;
+    int i = 0;
+
+    while (fgets(line, sizeof(line), file)) {
+        printf("\nReading: %s", line);
+        sscanf(line, "%d %d", &r1, &r2);
+        printf("Read: %d -- %d\n", r1, r2);
+
+        if (r1 == 0 || r2 == 0) continue;
+        else {
+            printf("Storing r1 & r2...\n");
+
+            // Reallocate Mem if exceeded
+            if (restricted_num < i) {
+                restricted_freq = (freq_band *) malloc(i * sizeof(freq_band));
+                if (restricted_freq == NULL) {
+                    perror("Error allocating memory for restricted_freq");
+                    exit(EXIT_FAILURE);
+                }
+            }
+
+            restricted_freq[i].f_start  = r1 * 1000;
+            restricted_freq[i].f_end    = r2 * 1000; 
+            printf("Restricted[%d]: %d -- %d\n", i, restricted_freq[i].f_start, restricted_freq[i].f_end);
+            i++;
+        }
+    }
+    
     fclose(file);
 }

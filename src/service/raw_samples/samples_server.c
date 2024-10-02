@@ -19,7 +19,7 @@
 
 #define SAMPLES_NUM 2500
 #define ANTENNAS_NUM 14
-#define BEAM_NUM_ELEM 16
+#define BEAM_NUM_ELEM 1
 #define RESTRICT_NUM 15 //16             // Number of restricted freq bands in the restrict.dat.inst
 #ifndef CLR_BANDS_MAX
 #define CLR_BANDS_MAX 6
@@ -147,11 +147,11 @@ void read_sample_shm(fftw_complex **temp_samples, int *samples_shm_ptr) {
             temp_samples[i][j] = samples_shm_ptr[i * SAMPLES_NUM + j] + I * samples_shm_ptr[i * SAMPLES_NUM + j + 1];
 
             // Debug: Print 20 complex of each antenna batch
-            if (j < 20) {
-                printf("shm[%d]      =   %d + i%d\n", i * SAMPLES_NUM + j, (int)samples_shm_ptr[i * SAMPLES_NUM + j], (int)samples_shm_ptr[i * SAMPLES_NUM + j + 1]);
-                printf("vs\n");
-                printf("temp_samples[%d][%d] =  %f + i%f\n\n", i, j, creal(temp_samples[i][j]), cimag(temp_samples[i][j]));
-            }
+            // if (j < 20) {
+            //     printf("shm[%d]      =   %d + i%d\n", i * SAMPLES_NUM + j, (int)samples_shm_ptr[i * SAMPLES_NUM + j], (int)samples_shm_ptr[i * SAMPLES_NUM + j + 1]);
+            //     printf("vs\n");
+            //     printf("temp_samples[%d][%d] =  %f + i%f\n\n", i, j, creal(temp_samples[i][j]), cimag(temp_samples[i][j]));
+            // }
         }
     }
 }
@@ -397,10 +397,19 @@ int main() {
     int clr_storage_i = 0;
     int clr_range[2] = {0};
     int fcenter = 0;
-    int beam_num[16] = {0};
+    int beam_num = 0;
     double sample_sep = 0;
     sample_meta_data meta_data = {0};
+    // freq_band restricted_freq[RESTRICT_NUM] = {0};
             
+    // Read-in Restricted Frequencies
+    char *restrict_file = "/home/df/Desktop/PSU-SuperDARN/Freq_Server/utils/misc_param/restrict.dat.inst";
+    read_restrict(restrict_file, restricted_freq, RESTRICT_NUM);
+
+    for (int i = 0; i < RESTRICT_NUM; i++) {
+        printf("restrict[%d]: %d -- %d\n", i, restricted_freq[i].f_start, restricted_freq[i].f_end);
+    }
+
     // Continuously process clients via shared memory
     while (1) {
         printf("[Frequency Server] Requesting new client to respond...\n\n");
@@ -414,7 +423,7 @@ int main() {
             printf("[Frequency Server] Awaiting initialization data unlock...\n");
             sem_wait(sl_init.sem);
             printf("[Frequency Server] Initialization data read...\n");
-            read_restrict_shm(restricted_freq, restrict_obj.shm_ptr);
+            // if (restrict_obj.shm_ptr[0] != 0) read_restrict_shm(restricted_freq, restrict_obj.shm_ptr);
             // read(meta_data)
             sem_post(sl_init.sem);
             printf("[Frequency Server] Initialization data read; processing...\n");
@@ -446,16 +455,19 @@ int main() {
 
 
             if (beam_num_obj.shm_ptr[0] != 0) {
-                read_int(beam_num, beam_num_obj.shm_ptr, BEAM_NUM_ELEM);
-                for (int i = 0; i < BEAM_NUM_ELEM; i++) printf("beam_num[%d]: %d\n", i, beam_num[i]);
+                read_int_single(beam_num, beam_num_obj.shm_ptr);
+                printf("beam_num: %d\n", beam_num);
             }
             printf("[Frequency Server] Beam Number done...\n");
 
-            read_restrict_shm(restricted_freq, restrict_obj.shm_ptr);
             sem_post(sl_samples.sem);
 
             // store sample data for debugging
             // debug function here
+
+            for (int i = 0; i < RESTRICT_NUM; i++) {
+                printf("restrict[%d]: %d -- %d\n", i, restricted_freq[i].f_start, restricted_freq[i].f_end);
+            }
 
             // Process Clear Freq
             clear_freq_search(

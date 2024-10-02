@@ -590,9 +590,13 @@ def read_sample_pickle(pickle_file):
 
 # Used to mimick USRP functionality
 def read_restrict_file(restrict_file):
+    print(f"Opening file {restrict_file} ...")
+    
     restricted_frequencies = []
     with open(restrict_file, 'r') as f:
         for line in f:
+            print(line)
+    
             if line[0] == '#' or line[0] == 'd' or len(line) < 8:
                 continue
             line = line.split(' ')
@@ -613,10 +617,10 @@ CFS = ClearFrequencyService()
 
 raw_samples, meta_data = read_sample_pickle("/home/df/Desktop/PSU-SuperDARN/Freq_Server/utils/pickle_input/clrfreq_dump.1.pickle")
 clear_freq_range = [ int(12 * pow(10,6)), int(12.5 * pow(10,6)) ]
+# restrict_data=read_restrict_file(RESTRICT_FILE)
 
 trimmed_samples = raw_samples[:1]         #HACK: writes only first two antenna's samples
 
-restrict_data=read_restrict_file(RESTRICT_FILE),
 
 CFS.sendSamples(trimmed_samples, 
                 clr_range=clear_freq_range, 

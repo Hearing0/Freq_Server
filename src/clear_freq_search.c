@@ -26,7 +26,7 @@
 
 
 // Debug Flags
-#define VERBOSE 1
+#define VERBOSE 0
 #define SPECTRAL_AVGING 1
 #define TEST_SAMPLES 0
 #define TEST_CLR_RANGE 1
@@ -512,9 +512,9 @@ void calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_meta_data
             if (j == 1) avg_spectrum[k] = sqrt(re + im);
             else avg_spectrum[k] += sqrt(re + im);
 
-            if (k == 9) {
-                printf("sample[%d][%d][%d]: %f + j%f\n", k, j, k + j, creal(four_spectrums[k + j]), cimag(four_spectrums[k + j]));
-            }
+            // if (k == 9) {
+            //     printf("sample[%d][%d][%d]: %f + j%f\n", k, j, k + j, creal(four_spectrums[k + j]), cimag(four_spectrums[k + j]));
+            // }
         }
         avg_spectrum[k] /= avg_freq_ratio;
 
@@ -569,12 +569,10 @@ void calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_meta_data
     // TODO: Plot usrp/antenna im and re separately (4 plots) 
     //          to confirm that one of them is correctly all zeros for im
 
-    if (VERBOSE) printf("delta_f: %f\nnum_samples: %d\nfcenter: %d\n", delta_f, num_samples, meta_data->usrp_fcenter * 1000);
+    // if (VERBOSE) printf("delta_f: %f\nnum_samples: %d\nfcenter: %d\n", delta_f, num_samples, meta_data->usrp_fcenter * 1000);
 
 
     // Mask restricted frequencies
-    // printf("    f: %d\n     f_avg: %ld\n    f_num: %ld\n", num_avg_samples, sizeof(freq_vector_avg), sizeof(freq_vector_avg)/ sizeof(freq_vector_avg[0]));
-    printf("    freq[last]: %f\n", freq_vector_avg[num_avg_samples - 1]);
     if (restricted_bands != NULL) mask_restricted_freq(avg_spectrum, freq_vector_avg, delta_f_avg, num_avg_samples, restricted_bands, restricted_num);
     
 
