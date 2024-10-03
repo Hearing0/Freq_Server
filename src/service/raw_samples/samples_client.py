@@ -358,16 +358,6 @@ class ClearFrequencyService():
         
         except AttributeError:
             print("[Frequency Client] ERROR: Element Size is incorrect. send()'s parameters were likely not assigned properly. Please verify...")
-            
-            # print("[Frequency Client] new_data len of: ", len(array_data))
-            # print("[Frequency Client] Writing sample data:\n", array_data[:10], "...")
-            # obj['shm_ptr'].seek(0)
-            # obj['shm_ptr'].write(struct.pack('i' * len(flattened_data), *array_data))   
-  
-        # print("[Frequency Client] new_data len of: ", len(flattened_data))
-        # print("[Frequency Client] Writing sample data:\n", flattened_data[:10], "...")
-        # obj['shm_ptr'].seek(0)
-        # obj['shm_ptr'].write(struct.pack('i' * obj['elem_num'], *flattened_data))   
                     
     def read_m_data(self, obj):
         """Reads in data from the shared memory file descriptor.
@@ -429,12 +419,8 @@ class ClearFrequencyService():
         
         # Special: Re-initialize ClearFreqService
         # if self.active_clients_fd == None:
-        #     # TODO: Test 
         #     self.__init__()
         
-        # Special: Find missing data
-        # if self.isRestricted is False and restrict_data is None:
-            # restrict_data = read_restrict_file(RESTRICT_FILE)
         
         # Get in Queue
         active_clients = self.increment_active_clients()
@@ -454,6 +440,7 @@ class ClearFrequencyService():
             if restrict_data is not None or meta_data is not None:
                 self.sl_init['sem'].acquire()
                 
+                # If restrict data present, send & overwrite 
                 if restrict_data is not None:    
                     # self.write_m_data(self.shm_objects[5], [(int(x)) for x in restrict_data])
                     
@@ -467,6 +454,7 @@ class ClearFrequencyService():
                     self.shm_objects[5]['shm_ptr'].seek(0)
                     self.shm_objects[5]['shm_ptr'].write(struct.pack('i' * (self.RESTRICT_NUM * 2), *new_restrict_data))
                 
+                # If data present, send 
                 if sample_sep is not None:
                     
                     self.write_data(self.shm_objects[4], sample_sep)
@@ -476,9 +464,7 @@ class ClearFrequencyService():
                 #     new_meta_data = []
                     
                 #     for data in meta_data:
-                #         new_meta_data += int(data)
-                    
-                    
+                #         new_meta_data += int(data)              
                     
                 self.sl_init['sem'].release()
                 self.sf_init['sem'].release()
@@ -502,11 +488,6 @@ class ClearFrequencyService():
                     # General: Write given input data 
                     elif input_data[i] is not None:
                         self.write_data(self.shm_objects[i], input_data[i])
-                
-                                    
-                # print("[Frequency Client] Writing restricted freq data:\n", restrict_data[:2], "...")
-                # self.shm_objects[5]['shm_ptr'].seek(0)
-                # self.shm_objects[5]['shm_ptr'].write(struct.pack('i' * (self.RESTRICT_NUM * 2), *new_restrict_data))
                 
                 self.sl_samples['sem'].release()
                 print("[Frequency Client] Done writing data to Shared Memory...")
@@ -555,7 +536,6 @@ class ClearFrequencyService():
                 print(f"Unlinked shared memory {obj['name']}")
             except posix_ipc.ExistentialError:
                 print(f"Shared memory {obj['name']} does not exist")
-
         try:
             posix_ipc.unlink_shared_memory(self.ACTIVE_CLIENTS_SHM_NAME)
             print(f"Unlinked shared memory {self.ACTIVE_CLIENTS_SHM_NAME}")

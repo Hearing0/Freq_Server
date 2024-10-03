@@ -518,7 +518,7 @@ void calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_meta_data
         }
         avg_spectrum[k] /= avg_freq_ratio;
 
-        if (k == 9) printf("avg_spectrum[%d]: %f\n", k, avg_spectrum[k]);
+        if (k == 9 && VERBOSE) printf("avg_spectrum[%d]: %f\n", k, avg_spectrum[k]);
     }
     t_avg = clock() - t_avg_curr;
     if (VERBOSE) printf("====> Spectral Avg took (s): %lf\n", ((double) (t_avg)) / (CLOCKS_PER_SEC));

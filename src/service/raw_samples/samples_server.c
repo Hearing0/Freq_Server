@@ -349,9 +349,6 @@ int main() {
             printf("[Frequency Server] \"%s\" sem_open failed.\n", semaphores[i]->name);
             exit(EXIT_FAILURE);    
         } 
-        // else {
-        //     printf("[Frequency Server] \"%s\" sem_open success.\n", semaphores[i]->name);
-        // }
     }
     printf("[Frequency Server] Done Initializing...\n\n");
 
@@ -400,15 +397,10 @@ int main() {
     int beam_num = 0;
     double sample_sep = 0;
     sample_meta_data meta_data = {0};
-    // freq_band restricted_freq[RESTRICT_NUM] = {0};
             
     // Read-in Restricted Frequencies
     char *restrict_file = "/home/df/Desktop/PSU-SuperDARN/Freq_Server/utils/misc_param/restrict.dat.inst";
     read_restrict(restrict_file, restricted_freq, RESTRICT_NUM);
-
-    for (int i = 0; i < RESTRICT_NUM; i++) {
-        printf("restrict[%d]: %d -- %d\n", i, restricted_freq[i].f_start, restricted_freq[i].f_end);
-    }
 
     // Continuously process clients via shared memory
     while (1) {
@@ -464,10 +456,6 @@ int main() {
 
             // store sample data for debugging
             // debug function here
-
-            for (int i = 0; i < RESTRICT_NUM; i++) {
-                printf("restrict[%d]: %d -- %d\n", i, restricted_freq[i].f_start, restricted_freq[i].f_end);
-            }
 
             // Process Clear Freq
             clear_freq_search(

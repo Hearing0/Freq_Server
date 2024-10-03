@@ -250,13 +250,13 @@ void read_restrict(char *filepath, freq_band *restricted_freq, int restricted_nu
     int i = 0;
 
     while (fgets(line, sizeof(line), file)) {
-        printf("\nReading: %s", line);
+        // printf("\nReading: %s", line);
         sscanf(line, "%d %d", &r1, &r2);
-        printf("Read: %d -- %d\n", r1, r2);
+        // printf("Read: %d -- %d\n", r1, r2);
 
         if (r1 == 0 || r2 == 0) continue;
         else {
-            printf("Storing r1 & r2...\n");
+            // printf("Storing r1 & r2...\n");
 
             // Reallocate Mem if exceeded
             if (restricted_num < i) {
@@ -269,7 +269,7 @@ void read_restrict(char *filepath, freq_band *restricted_freq, int restricted_nu
 
             restricted_freq[i].f_start  = r1 * 1000;
             restricted_freq[i].f_end    = r2 * 1000; 
-            printf("Restricted[%d]: %d -- %d\n", i, restricted_freq[i].f_start, restricted_freq[i].f_end);
+            // printf("Restricted[%d]: %d -- %d\n", i, restricted_freq[i].f_start, restricted_freq[i].f_end);
             i++;
         }
     }
