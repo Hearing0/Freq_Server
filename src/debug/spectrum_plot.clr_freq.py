@@ -39,14 +39,16 @@ if 'Clear Freq Start' not in clr_freq_data.columns or 'Clear Freq End' not in cl
 # Convert data to numpy arrays
 Power = data['Power'].to_numpy() 
 Freq = data['Frequency'].to_numpy() / 1e6  # Convert Frequency to MHz
-if 'Clear Freq Start' in clr_freq_data.columns and 'Clear Freq End' in clr_freq_data.columns:
-    Clear_Start = clr_freq_data['Clear Freq Start']
-    Clear_End = clr_freq_data['Clear Freq End']
+# if 'Clear Freq Start' in clr_freq_data.columns and 'Clear Freq End' in clr_freq_data.columns:
+#     clear_start = clr_freq_data['Clear Freq Start']
+#     clear_end = clr_freq_data['Clear Freq End']
+#     print("Clear |{clear_start} -- {clear_end}|")
 
 # Plot spectrum data
 plt.figure(figsize=(16, 12))  # Increase the figure size
-# if 'Clear Freq Start' in clr_freq_data.columns and 'Clear Freq End' in clr_freq_data.columns:
-#     plt.xlim(clr_freq_data['Clear Freq Start'][0], clr_freq_data['Clear Freq End'][0])
+if 'Clear Freq Start' in clr_freq_data.columns and 'Clear Freq End' in clr_freq_data.columns:
+    plt.xlim(clr_freq_data['Clear Freq Start'][0] / 1e6, clr_freq_data['Clear Freq End'][0] / 1e6)
+    plt.xticks(np.arange(clr_freq_data['Clear Freq Start'][0] / 1e6, clr_freq_data['Clear Freq End'][0] / 1e6, .02))
 plt.plot(Freq, Power, label='Spectrum')
 plt.xlabel('Frequency (MHz)')
 plt.ylabel('Power')
@@ -58,7 +60,9 @@ plt.yticks(np.arange(0, 11e3, 2000))
 # Create Color Palette 
 colors = sns.color_palette("colorblind", len(clr_freq_data))
 
+
 # Plot the clear frequency bands
+count = 0
 for index, row in clr_freq_data.iterrows():
     start_freq = row['Start Frequency'] / 1e6  # Convert to MHz
     end_freq = row['End Frequency'] / 1e6  # Convert to MHz
@@ -67,18 +71,12 @@ for index, row in clr_freq_data.iterrows():
     # Ignore Dummy Bands 
     if noise < 100e3:
         # Mark the frequency band
-        plt.axvspan(start_freq, end_freq, color=colors[index], alpha=.5)
-
-        # Annotate start frequency, end frequency, and noise
-        if index % 2:
-            v_alignment = 'bottom'
-        else:
-            v_alignment = 'top'
+        plt.axvspan(start_freq, end_freq, color=colors[index], alpha=.5)        
         mid_freq = (start_freq + end_freq) / 2
         plt.text(mid_freq, 10500, f"{round(start_freq, 2)}-{round(end_freq, 2)} MHz\nNoise: {round(noise, 2)}", 
-                horizontalalignment='center', verticalalignment=v_alignment,fontsize=9, bbox=dict(facecolor='white', alpha=0.8))
+                horizontalalignment='center', verticalalignment='bottom',fontsize=9, bbox=dict(facecolor='white', alpha=0.8))
 
 
 # Display plot
 plt.legend()
-plt.savefig("plot_with_bands.png")
+plt.savefig("plots/debug/spectrum_plot.clrbands.png")
