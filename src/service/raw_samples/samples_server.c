@@ -31,7 +31,7 @@
 #define CLR_RANGE_SHM_SIZE  (2 * sizeof(double))
 #define FCENTER_SHM_SIZE    (1 * sizeof(int))
 #define BEAM_NUM_SHM_SIZE   (1 * sizeof(int))
-#define SAMPLE_SEP_SHM_SIZE (1 * sizeof(double))
+#define SAMPLE_SEP_SHM_SIZE (1 * sizeof(int))
 #define RESTRICT_SHM_SIZE   (RESTRICT_NUM * 2 * sizeof(int))          // 2 = start and end freqs
 #define META_DATA_SHM_SIZE  (5 * sizeof(double))
 #define CLR_BANDS_SHM_SIZE  (CLR_BANDS_MAX * 4 * 3)     // TODO: Round to convert freqs to int again 
@@ -45,7 +45,7 @@
 #define RESTRICT_SHM_NAME       "/restricted_freq"
 #define META_DATA_SHM_NAME      "/meta_data"
 #define CLRFREQ_SHM_NAME        "/clear_freq"
-#define SAMPLE_PARAM_NUM 5
+#define SAMPLE_PARAM_NUM 4
 #define RESTRICT_PARAM_NUM 2
 #define PARAM_NUM 8
 
@@ -62,10 +62,17 @@
 
 typedef struct shm_obj{
     const char* name;
-    int* shm_ptr;
+    void* shm_ptr;
     int shm_fd;
     size_t size;
 } shm_obj;
+
+// typedef struct shm_obj_d {
+//     const char* name;
+//     double* shm_ptr;
+//     int shm_fd;
+//     size_t size;
+// } shm_obj_d;
 
 typedef struct semaphore {
     const char* name;
@@ -138,16 +145,18 @@ void read_restrict_shm(freq_band *restricted_freq, int *restrict_shm_ptr) {
     }
 }
 
-void read_sample_shm(fftw_complex **temp_samples, int *samples_shm_ptr) {
+void read_sample_shm(fftw_complex **temp_samples, void *samples_shm_ptr) {
+    int *s_ptr = (int *) samples_shm_ptr;
+    
     // Store sample data into complex form
     for (int i = 0; i < ANTENNAS_NUM; i++)
     {
         for (int j = 0; j < SAMPLES_NUM; j += 2)
         {
-            temp_samples[i][j] = samples_shm_ptr[i * SAMPLES_NUM + j] + I * samples_shm_ptr[i * SAMPLES_NUM + j + 1];
+            temp_samples[i][j] = s_ptr[i * SAMPLES_NUM + j] + I * s_ptr[i * SAMPLES_NUM + j + 1];
 
             // Debug: Print 20 complex of each antenna batch
-            // if (j < 20) {
+            // if (j < 10 && i < 2) {
             //     printf("shm[%d]      =   %d + i%d\n", i * SAMPLES_NUM + j, (int)samples_shm_ptr[i * SAMPLES_NUM + j], (int)samples_shm_ptr[i * SAMPLES_NUM + j + 1]);
             //     printf("vs\n");
             //     printf("temp_samples[%d][%d] =  %f + i%f\n\n", i, j, creal(temp_samples[i][j]), cimag(temp_samples[i][j]));
@@ -181,22 +190,43 @@ void read_clrfreq_shm(freq_band *clr_bands, int *ptr) {
  * @param  elem_num: Number of elements to read in from shm_ptr. 
  * @retval None
  */
-void read_int(void *result, int *shm_ptr, int elem_num) {
+void read_int(void *result, void *shm_ptr, int elem_num) {
+    int *ref_ptr = (int *) shm_ptr;
+
     if (elem_num > 1) {
         int *result_ptr = (int *) result;
         for (int i = 0; i < elem_num; i++) {
-            result_ptr[i] = shm_ptr[i];
-            printf("    read_int: %d\n", i);
+            result_ptr[i] = ref_ptr[i];
+            if (VERBOSE && i < 2) printf("    read_int: %d\n", result_ptr[i]);
         }
     } else {
-        printf("Error: Use read_int_single() for singleton variables\n");
+        printf("Error: Use read_single_int() for single variables\n");
     }
 }
 
-void read_int_single(int result, int *shm_ptr) {
-    result = shm_ptr[0];
+void read_double(void *result, void *shm_ptr, int elem_num) {
+    double *ref_ptr = (double *) shm_ptr;
+
+    if (elem_num > 1) {
+        double *result_ptr = (double *) result;
+        for (int i = 0; i < elem_num; i++) {
+            result_ptr[i] = ref_ptr[i];
+            if (VERBOSE && i < 2) printf("    read_double: %f\n", result_ptr[i]);
+        }
+    } else {
+        printf("Error: Use read_single_double() for single variables\n");
+    }
 }
 
+void read_single_int(int *result, void *shm_ptr) {
+    *result = *(int *) shm_ptr;
+    if (VERBOSE) printf("   read_s_int: %d\n", *result);
+}
+
+void read_single_double(double *result, void *shm_ptr){
+    *result = *(double *) shm_ptr;
+    if (VERBOSE) printf("   read_s_int: %f\n", *result);
+}
 
 /**
  * @brief  Writes Clear Freq Bands to its shared memory pointer.
@@ -393,9 +423,8 @@ int main() {
     }
     int clr_storage_i = 0;
     int clr_range[2] = {0};
-    int fcenter = 0;
     int beam_num = 0;
-    double sample_sep = 0;
+    int sample_sep = 0;
     sample_meta_data meta_data = {0};
             
     // Read-in Restricted Frequencies
@@ -415,8 +444,19 @@ int main() {
             printf("[Frequency Server] Awaiting initialization data unlock...\n");
             sem_wait(sl_init.sem);
             printf("[Frequency Server] Initialization data read...\n");
+
+            // Read Sample Separation
+            if ( *(int*) (sample_sep_obj.shm_ptr) != 0) {
+                read_single_int(&sample_sep, sample_sep_obj.shm_ptr);
+                printf("sample_sep: %d\n", sample_sep);
+            }
+
+            // Read Restricted Frequencies
             // if (restrict_obj.shm_ptr[0] != 0) read_restrict_shm(restricted_freq, restrict_obj.shm_ptr);
-            // read(meta_data)
+
+            // Read Meta Data
+            // read(meta_data) *((double*)ptr)
+
             sem_post(sl_init.sem);
             printf("[Frequency Server] Initialization data read; processing...\n");
             // storeInRadarTable(restrict_freq, meta_data)
@@ -433,21 +473,19 @@ int main() {
             read_sample_shm(temp_samples, samples_obj.shm_ptr);
             printf("[Frequency Server] Samples done...\n");
             
-            if (clr_range_obj.shm_ptr[0] != 0) read_int(clr_range, clr_range_obj.shm_ptr, 2);
+            if (*(int*) (clr_range_obj.shm_ptr) != 0) read_int(clr_range, clr_range_obj.shm_ptr, 2);
             printf("clr_range: %d -- %d\n", clr_range[0], clr_range[1]);
             printf("[Frequency Server] Clear Range done...\n");
 
-            if (fcenter_obj.shm_ptr[0] != 0) {
-                // int *fcenter_ptr;
-                read_int_single(fcenter, fcenter_obj.shm_ptr);
-                // fcenter = *fcenter_ptr;
-                printf("fcenter: %d\n", fcenter);
+            if (*(int*) (fcenter_obj.shm_ptr) != 0) {
+                read_single_int( &(meta_data.usrp_fcenter) , fcenter_obj.shm_ptr);
+                printf("fcenter: %d\n", meta_data.usrp_fcenter);
             }
             printf("[Frequency Server] Freq Center done...\n");
 
 
-            if (beam_num_obj.shm_ptr[0] != 0) {
-                read_int_single(beam_num, beam_num_obj.shm_ptr);
+            if (*(int*) (beam_num_obj.shm_ptr) != 0) {
+                read_single_int(&beam_num, beam_num_obj.shm_ptr);
                 printf("beam_num: %d\n", beam_num);
             }
             printf("[Frequency Server] Beam Number done...\n");
@@ -457,12 +495,23 @@ int main() {
             // store sample data for debugging
             // debug function here
 
+            
+            // printf("sample_sep: %f\n", *(double*) sample_sep_obj.shm_ptr);
+            // printf("clr_range: %d -- %d\n", *(int*)clr_range_obj.shm_ptr, *(int*)(clr_range_obj.shm_ptr) );
+            // printf("fcenter: %d\n", *(int*) fcenter_obj.shm_ptr);
+            // printf("beam_num: %d\n", *(int*) beam_num_obj.shm_ptr);
+            // printf("restricted[0]: %d -- %d\n", *(int*) restrict_obj.shm_ptr, *(int*)(restrict_obj.shm_ptr + 1));
+
             // Process Clear Freq
+            printf("[Frequency Server] Starting Clear Freq Search...\n");
             clear_freq_search(
                 temp_samples, 
                 clr_range,
+                beam_num,
+                sample_sep,
                 restricted_freq, 
                 RESTRICT_NUM,
+                meta_data,
                 clr_bands                
             );
             // update_clr_table(clr_bands);

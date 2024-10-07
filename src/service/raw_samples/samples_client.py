@@ -39,7 +39,7 @@ class ClearFrequencyService():
     CLR_RANGE_SHM_SIZE =  (2 * DOUBLE_SIZE)
     FCENTER_SHM_SIZE =    (1 * INT_SIZE)
     BEAM_NUM_SHM_SIZE =   (1 * INT_SIZE)
-    SAMPLE_SEP_SHM_SIZE = (1 * DOUBLE_SIZE)
+    SAMPLE_SEP_SHM_SIZE = (1 * INT_SIZE)
     RESTRICT_SHM_SIZE =   (RESTRICT_NUM * 2 * INT_SIZE)          # 2 = start and end freqs
     META_DATA_SHM_SIZE =  (5 * DOUBLE_SIZE)
     CLR_BANDS_SHM_SIZE =  (CLR_BAND_MAX * INT_SIZE * 3)     # TODO: Round to convert freqs to int again 
@@ -58,7 +58,7 @@ class ClearFrequencyService():
     CLRFREQ_SHM_NAME =          "/clear_freq"
     ACTIVE_CLIENTS_SHM_NAME =   "/active_clients"   # For Debugging
     
-    SAMPLE_PARAM_NUM =      5
+    SAMPLE_PARAM_NUM =      4
     RESTRICT_PARAM_NUM =    2
     PARAM_NUM =             8
     
@@ -301,11 +301,22 @@ class ClearFrequencyService():
             raise ValueError(f"var ({var}) is contains neither float nor integers.")
     
     def write_data(self, obj, array_data, complex=False):
+        """Writes data from array_data onto the object's shared memory pointer. 
+        "Sends data from array_data across the obj's channel"
+
+        Args:
+            obj (dict): Object Dictionary contain Shared Memory data for the object. 
+            array_data (list): List of data points 
+            complex (bool, optional): Flag to write and unpack array_data 
+                from its complex notation. Defaults to False.
+
+        Raises:
+            ValueError: If the variable doesn't contain either ints or floats.
+        """
         try:    
             flattened_data = []
             if complex:
                 # If complex, flatten and separate real and imaginary parts
-                # flattened_data = np.column_stack((array_data.real.flatten(), array_data.imag.flatten())).flatten()
                 for antenna_sample in array_data:  
                     # print("[Frequency Client] sample_arr len: ", len(antenna_sample))
                     
@@ -437,11 +448,14 @@ class ClearFrequencyService():
             print("[clearFrequencyService] Acquired Client Request...")
             
             # Check & Send Initialization Data
-            if restrict_data is not None or meta_data is not None:
+            if sample_sep is not None or restrict_data is not None or meta_data is not None:
+                print("[clearFrequencyService] Requesting Initialization Semaphore...")
                 self.sl_init['sem'].acquire()
+                print("[clearFrequencyService] Initialization Semaphore Acquired...")
                 
                 # If restrict data present, send & overwrite 
                 if restrict_data is not None:    
+                    print(f"[Frequency Client] Data Write Progress: {self.shm_objects[5]['name']}")
                     # self.write_m_data(self.shm_objects[5], [(int(x)) for x in restrict_data])
                     
                     new_restrict_data = []
@@ -454,39 +468,46 @@ class ClearFrequencyService():
                     self.shm_objects[5]['shm_ptr'].seek(0)
                     self.shm_objects[5]['shm_ptr'].write(struct.pack('i' * (self.RESTRICT_NUM * 2), *new_restrict_data))
                 
-                # If data present, send 
-                if sample_sep is not None:
-                    
+                # If sample separation present, send
+                if sample_sep is not None:                
+                    print(f"[Frequency Client] Data Write Progress: {self.shm_objects[4]['name']}")
                     self.write_data(self.shm_objects[4], sample_sep)
-                
+                                
                 # TODO: write to meta_data after adding auto-padding to samples for num_antenna  
+                # TODO: Implemented meta_data obj after smsep obj
                 # if meta_data is not None:
-                #     new_meta_data = []
-                    
-                #     for data in meta_data:
-                #         new_meta_data += int(data)              
+                #     print(f"[Frequency Client] Data Write Progress: {self.shm_objects[6]['name']}")
+                #     new_meta_data = [
+                #         meta_data['antenna_list'],
+                #         len(meta_data['antenna_list']),
+                #         meta_data['number_of_samples'],
+                #         meta_data['x_spacing'],
+                #         meta_data['usrp_rf_rate'],
+                #     ]
+                #     # TODO: Implement a meta_data flag into write_data()
+                #     self.write_data(self.shm_objects[6], new_meta_data)
                     
                 self.sl_init['sem'].release()
                 self.sf_init['sem'].release()
+                print("[clearFrequencyService] Initialization Semaphore Released ...")
+                print("[clearFrequencyService] Server Initialization Flag raised ...")
                                 
-            
             if raw_samples is not None:
                 print("[clearFrequencyService] Awaiting Sample Semphore Lock...")
                 self.sl_samples['sem'].acquire()
-                
+
+                # Write Sample data
                 self.write_data(self.shm_objects[0], raw_samples, complex = True)
-                print(f"samples_ptr: {int(self.shm_objects[0]['shm_ptr'][0])} + {int(self.shm_objects[0]['shm_ptr'][1])}")
-                print(f"samples_arr: {raw_samples[0]}")
                 
-                # If Sample Data given, write it
+                # print(f"samples_ptr: {int(self.shm_objects[0]['shm_ptr'][0])} + {int(self.shm_objects[0]['shm_ptr'][1])}")
+                # print(f"samples_arr: {raw_samples[0]}")
+                
+                # If Sample-relevant Data given, write it
                 for i in range(1, self.SAMPLE_PARAM_NUM):
                     print(f"[Frequency Client] Data Write Progress: {i}/{self.SAMPLE_PARAM_NUM - 1} {self.shm_objects[i]['name']}")
-                    # Special: Write using double
-                    if i == 1 :
-                        self.write_data(self.shm_objects[i], input_data[i])
-                        
-                    # General: Write given input data 
-                    elif input_data[i] is not None:
+                    
+                    # General: Write updated input data 
+                    if input_data[i] is not None:
                         self.write_data(self.shm_objects[i], input_data[i])
                 
                 self.sl_samples['sem'].release()
@@ -604,9 +625,9 @@ trimmed_samples = raw_samples[:1]         #HACK: writes only first two antenna's
 
 CFS.sendSamples(trimmed_samples, 
                 clr_range=clear_freq_range, 
-                fcenter=int(meta_data['usrp_fcenter']),
+                fcenter=12000,
                 beam_num=1,
-                sample_sep=.0003,
+                sample_sep=340,
                 meta_data=meta_data
                 )
 # CFS.sendSamples(raw_samples)
