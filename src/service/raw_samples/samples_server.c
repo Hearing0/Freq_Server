@@ -17,12 +17,14 @@
 // #define DOUBLE_SIZE = 8
 
 
-#define SAMPLES_NUM 2500
-#define ANTENNAS_NUM 14
-#define BEAM_NUM_ELEM 1
-#define RESTRICT_NUM 15 //16             // Number of restricted freq bands in the restrict.dat.inst
+#define SAMPLES_NUM     2500
+#define ANTENNAS_NUM    14
+#define BEAM_NUM_ELEM   1
+#define RESTRICT_NUM    15 //16             // Number of restricted freq bands in the restrict.dat.inst
+#define META_ELEM       4                   // 4 = 5 - 1 (fcenter has unique obj)
+#define ANTENNA_ELEM    14
 #ifndef CLR_BANDS_MAX
-#define CLR_BANDS_MAX 6
+#define CLR_BANDS_MAX   6
 #endif
 #define CLR_STORAGE_NUM 5
 #define CLR_STORE_FILEPATH "../../../utils/csv_dump/clr_band_storage/"
@@ -33,7 +35,7 @@
 #define BEAM_NUM_SHM_SIZE   (1 * sizeof(int))
 #define SAMPLE_SEP_SHM_SIZE (1 * sizeof(int))
 #define RESTRICT_SHM_SIZE   (RESTRICT_NUM * 2 * sizeof(int))          // 2 = start and end freqs
-#define META_DATA_SHM_SIZE  (5 * sizeof(double))
+#define META_DATA_SHM_SIZE  ((META_ELEM + ANTENNA_ELEM) * sizeof(double))
 #define CLR_BANDS_SHM_SIZE  (CLR_BANDS_MAX * 4 * 3)     // TODO: Round to convert freqs to int again 
 
 // Shared Memory and Semaphore Names 
@@ -66,13 +68,6 @@ typedef struct shm_obj{
     int shm_fd;
     size_t size;
 } shm_obj;
-
-// typedef struct shm_obj_d {
-//     const char* name;
-//     double* shm_ptr;
-//     int shm_fd;
-//     size_t size;
-// } shm_obj_d;
 
 typedef struct semaphore {
     const char* name;
@@ -113,14 +108,14 @@ struct semaphore *semaphores[SEM_NUM] = {
     &sl_clrfreq,
 };
 
-shm_obj samples_obj = {SAMPLES_SHM_NAME, NULL, -1, SAMPLES_SHM_SIZE};
-shm_obj clr_range_obj = {CLR_RANGE_SHM_NAME, NULL, -1, CLR_RANGE_SHM_SIZE};
-shm_obj fcenter_obj = {FCENTER_SHM_NAME, NULL, -1, FCENTER_SHM_SIZE};
-shm_obj beam_num_obj = {BEAM_NUM_SHM_NAME, NULL, -1, BEAM_NUM_SHM_SIZE};
-shm_obj sample_sep_obj = {SAMPLE_SEP_SHM_NAME, NULL, -1, SAMPLE_SEP_SHM_SIZE};
-shm_obj restrict_obj = {RESTRICT_SHM_NAME, NULL, -1, RESTRICT_SHM_SIZE};
-shm_obj meta_obj = {META_DATA_SHM_NAME, NULL, -1, META_DATA_SHM_SIZE};
-shm_obj clrfreq_obj = {CLRFREQ_SHM_NAME, NULL, -1, CLR_BANDS_SHM_SIZE};
+shm_obj samples_obj     = {SAMPLES_SHM_NAME, NULL, -1, SAMPLES_SHM_SIZE};
+shm_obj clr_range_obj   = {CLR_RANGE_SHM_NAME, NULL, -1, CLR_RANGE_SHM_SIZE};
+shm_obj fcenter_obj     = {FCENTER_SHM_NAME, NULL, -1, FCENTER_SHM_SIZE};
+shm_obj beam_num_obj    = {BEAM_NUM_SHM_NAME, NULL, -1, BEAM_NUM_SHM_SIZE};
+shm_obj sample_sep_obj  = {SAMPLE_SEP_SHM_NAME, NULL, -1, SAMPLE_SEP_SHM_SIZE};
+shm_obj restrict_obj    = {RESTRICT_SHM_NAME, NULL, -1, RESTRICT_SHM_SIZE};
+shm_obj meta_obj        = {META_DATA_SHM_NAME, NULL, -1, META_DATA_SHM_SIZE};
+shm_obj clrfreq_obj     = {CLRFREQ_SHM_NAME, NULL, -1, CLR_BANDS_SHM_SIZE};
 struct shm_obj *objects[PARAM_NUM] = {
     &samples_obj,
     &clr_range_obj,
@@ -136,9 +131,9 @@ struct shm_obj *objects[PARAM_NUM] = {
 
 
 void read_restrict_shm(freq_band *restricted_freq, int *restrict_shm_ptr) {
+    // Store Restricted Freq
     for (int i = 0; i < RESTRICT_NUM; i++)
     {
-        // Store Restricted Freq
         restricted_freq[i].f_start = restrict_shm_ptr[i * 2];
         restricted_freq[i].f_end = restrict_shm_ptr[i * 2 + 1];
         // if (i < 3) printf("restricted_freq[%d]: |%d -- %d| ...\n", i, restricted_freq[i].f_start, restricted_freq[i].f_end);
@@ -174,6 +169,7 @@ void read_sample_shm(fftw_complex **temp_samples, void *samples_shm_ptr) {
  */
 void read_clrfreq_shm(freq_band *clr_bands, int *ptr) {
     int elements_per_band = 3;
+
     // Store into clr_bands
     for (int i = 0; i < CLR_BANDS_MAX; i++) {
         clr_bands[i].f_start= ptr[i * elements_per_band];
@@ -215,6 +211,44 @@ void read_double(void *result, void *shm_ptr, int elem_num) {
         }
     } else {
         printf("Error: Use read_single_double() for single variables\n");
+    }
+}
+
+void read_meta_data(sample_meta_data *result, void *shm_ptr) {
+    printf("starting meta read..\n");
+    double *ref_ptr = (double *) shm_ptr;
+    int *antenna_ptr = (int *) result->antenna_list;
+
+    // Read in antenna_list elements
+    read_int(antenna_ptr, (int *) shm_ptr, ANTENNA_ELEM);
+
+    printf("Fin reading ant list and reading meta_elem..\n");
+
+    // Loop thru all meta elements and copy into result
+    for (int i = ANTENNA_ELEM; i < (META_ELEM + ANTENNA_ELEM); i++) {
+        printf("reading[%d]: %f\n", i, ref_ptr[i]);
+        switch (i) {
+            case (ANTENNA_ELEM):
+                result->num_antennas = (int) ref_ptr[i];
+                printf("    num_antennas: %d\n", result->num_antennas);
+                break;
+
+            case (ANTENNA_ELEM + 1):
+                result->number_of_samples = (int) ref_ptr[i];
+                break;
+
+            case (ANTENNA_ELEM + 2):
+                result->x_spacing = ref_ptr[i];
+                break;
+            
+            case (ANTENNA_ELEM + 3):
+                result->usrp_rf_rate = (int) ref_ptr[i];
+                break;
+
+            default:
+                break;
+        }
+        if (VERBOSE && i < (ANTENNA_ELEM + 2)) printf("    read_meta: %f\n", ref_ptr[i]);
     }
 }
 
@@ -335,6 +369,53 @@ void write_clr_log_csv(freq_band **clr_storage, int clr_num) {
     fclose(file);
 }
 
+void flag_debug() {
+    sample_meta_data meta_data = {0};
+
+    printf("[FLAG DEBUGGING] All functionality except for semaphore flags is absent!\n");
+    printf("[FLAG DEBUGGING] Comment out the flag_debug() function to revert to standard functionality.\n\n");
+
+    // Debug: Verify that the flags are down 
+    int test = sem_trywait(sf_server.sem);
+    printf("\nsf_server was recieved if 0: %d\n", test);
+    int test1 = sem_trywait(sf_init.sem);
+    printf("sf_int was recieved if 0: %d\n", test1);
+    int test2 = sem_trywait(sf_samples.sem);
+    printf("sf_samples was recieved if 0: %d\n\n", test2);
+
+    printf("[Frequency Server] Requesting new client to respond...\n\n");
+    sem_post(sf_client.sem); 
+    
+    // Debug: Check if semaphore flags are signaled in correct order
+    int i = 0;
+    while(true) {
+        test = sem_wait(sf_server.sem);
+        test1 = sem_trywait(sf_init.sem);
+        if (test1) {
+            sem_wait(sl_init.sem);
+            sem_post(sl_init.sem);
+        }
+        test2 = sem_trywait(sf_samples.sem);
+        if (test2) {
+            sem_wait(sl_samples.sem);
+            sem_post(sl_samples.sem);
+        }
+        
+        // Let the client finish so to not manually close it
+        if (i == 0 && test == 0) {
+            printf("setting clr_freq flags for the client to finish\n");
+            sem_post(sl_clrfreq.sem);
+            sem_post(sf_clrfreq.sem);
+            i++;
+        }
+        
+        printf("sf_int was recieved if 0: %d %d %d\n", test, test1, test2);
+        sleep(1);
+    }
+
+    return;
+};
+
 
 int main() {
     // Setup Signal Handler
@@ -397,7 +478,7 @@ int main() {
         }
     }
     freq_band *restricted_freq = NULL;
-    restricted_freq = (freq_band *)malloc(RESTRICT_SHM_SIZE);
+    restricted_freq = (freq_band *)malloc(RESTRICT_NUM * sizeof(freq_band));
     if (restricted_freq == NULL) {
         perror("Error allocating memory for restricted_freq elements");
         exit(EXIT_FAILURE);
@@ -426,10 +507,16 @@ int main() {
     int beam_num = 0;
     int sample_sep = 0;
     sample_meta_data meta_data = {0};
+    meta_data.antenna_list = malloc(ANTENNA_ELEM * sizeof(int));
             
     // Read-in Restricted Frequencies
     char *restrict_file = "/home/df/Desktop/PSU-SuperDARN/Freq_Server/utils/misc_param/restrict.dat.inst";
     read_restrict(restrict_file, restricted_freq, RESTRICT_NUM);
+
+
+    // Semaphore Flag Debugging
+    // flag_debug();
+
 
     // Continuously process clients via shared memory
     while (1) {
@@ -440,7 +527,8 @@ int main() {
         sem_wait(sf_server.sem);   
 
         // If initialization data flagged, read and store data
-        if (sem_trywait(sf_init.sem)){
+        int sf_init_result = sem_trywait(sf_init.sem);
+        if (sf_init_result == 0){
             printf("[Frequency Server] Awaiting initialization data unlock...\n");
             sem_wait(sl_init.sem);
             printf("[Frequency Server] Initialization data read...\n");
@@ -455,15 +543,29 @@ int main() {
             // if (restrict_obj.shm_ptr[0] != 0) read_restrict_shm(restricted_freq, restrict_obj.shm_ptr);
 
             // Read Meta Data
-            // read(meta_data) *((double*)ptr)
+            // if ( *(double*) (meta_obj.shm_ptr) != 0) {
+                read_meta_data(&meta_data, meta_obj.shm_ptr);
+                
+                for (int j = 0; j < ANTENNA_ELEM; j++) {
+                    printf("    antenna_list: %d", meta_data.antenna_list[j]);
+                }
+                printf("     num_antennas: %d\n", meta_data.num_antennas);
+                printf("     num_samples : %d\n", meta_data.number_of_samples);
+                printf("     fcenter: passed during sample DT\n");
+                printf("     rf_rate     : %d\n", meta_data.usrp_rf_rate);
+                printf("     x_spacing   : %f\n", meta_data.x_spacing);
+            // }
 
             sem_post(sl_init.sem);
             printf("[Frequency Server] Initialization data read; processing...\n");
             // storeInRadarTable(restrict_freq, meta_data)
             printf("[Frequency Server] Initialization data processed...\n");
         }
+
+        printf("attempting sample process\n");
         // If samples flagged (& intialized), process clear frequency
-        if (sem_trywait(sf_samples.sem) && restricted_freq != NULL){
+        int sf_samples_result = sem_trywait(sf_samples.sem);
+        if (sf_samples_result == 0 && meta_data.num_antennas != 0){
             // Wait to read-in data
             printf("[Frequency Server] Awaiting sample data unlock...\n");
             sem_wait(sl_samples.sem);
@@ -537,7 +639,7 @@ int main() {
             }
             printf("[Frequency Server] Clr Freq Log Batch: %d/%d\n", clr_storage_i, CLR_STORAGE_NUM);
         }
-        else if (restricted_freq == NULL) {
+        else {
             printf("[Frequency Server] ERROR: Called for Clear Freq without prior Initialization\n");
         }
         

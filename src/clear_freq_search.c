@@ -66,7 +66,7 @@ void load_beam_config(double *x_spacing, int *n_beams, double *beam_sep){
         return;
     }
 
-    *x_spacing = config.array_info.x_spacing;
+    // *x_spacing = config.array_info.x_spacing;
     *n_beams = config.array_info.nbeams;
     *beam_sep = config.array_info.beam_sep;
 }
@@ -638,7 +638,7 @@ clear_freq clear_freq_search(
     freq_data freq_data;
 
     // Load in data for Clear Freq Calculation
-    read_input_data(input_file_path, &meta_data, &freq_data.clear_freq_range, &raw_samples);
+    // read_input_data(input_file_path, &meta_data, &freq_data.clear_freq_range, &raw_samples);
 
     // Load in data for Beam Angle Calculation
     load_beam_config(&meta_data.x_spacing, &n_beams, &beam_sep);
