@@ -527,8 +527,7 @@ int main() {
         sem_wait(sf_server.sem);   
 
         // If initialization data flagged, read and store data
-        int sf_init_result = sem_trywait(sf_init.sem);
-        if (sf_init_result == 0){
+        if (sem_trywait(sf_init.sem) == 0){
             printf("[Frequency Server] Awaiting initialization data unlock...\n");
             sem_wait(sl_init.sem);
             printf("[Frequency Server] Initialization data read...\n");
@@ -564,8 +563,7 @@ int main() {
 
         printf("attempting sample process\n");
         // If samples flagged (& intialized), process clear frequency
-        int sf_samples_result = sem_trywait(sf_samples.sem);
-        if (sf_samples_result == 0 && meta_data.num_antennas != 0){
+        if (sem_trywait(sf_samples.sem) == 0 && meta_data.num_antennas != 0){
             // Wait to read-in data
             printf("[Frequency Server] Awaiting sample data unlock...\n");
             sem_wait(sl_samples.sem);
