@@ -169,7 +169,7 @@ void convolve(double* u, int u_size, int* v, int v_size, double* result) {
  * @param  restricted_num: Number of restricted frequency bands in restricted_bands. 
  * @retval None
  */
-void mask_restricted_freq(double *spectrum, double *freq_vector, int delta_f, int num_samples, freq_band *restricted_bands, int restricted_num) {
+void mask_restricted_freq(double *spectrum, double *freq_vector, int delta_f, int num_samples, freq_band *restricted_bands, int restricted_num) { 
     printf("    [mask_restricted] Masking restricted bands...\n");
     bool is_applied = false;
 
@@ -204,6 +204,11 @@ void mask_restricted_freq(double *spectrum, double *freq_vector, int delta_f, in
     }
     if (is_applied) printf("    [mask_restricted] Mask(s) applied!\n");
     else printf("    [mask_restricted] No masks applied\n");
+
+    // // Debug: Print Restricted Freqs
+    // for (int i = 0; i < restricted_num; i++) {
+    //     printf("Restricted[%d]: %d -- %d\n", i, restricted_bands[i].f_start, restricted_bands[i].f_end);
+    // }      
 }
 
 // TODO: Parse radar_config_constants.py for CLRFREQ_RES
@@ -229,7 +234,7 @@ void mask_restricted_freq(double *spectrum, double *freq_vector, int delta_f, in
  * * lowest noise freq_bands.  
  * @retval None
  */
-void find_clear_freqs(double *spectrum, sample_meta_data meta_data, double delta_f, double f_start, double f_end, int clear_bw, freq_band *clr_freq_bands) {
+void find_clear_freqs(double *spectrum, sample_meta_data meta_data, double delta_f, double f_start, double f_end, int clear_bw, freq_band *clr_bands) {
     
     printf("[find_clear_freqs()] Entered find_clear_freqs()...\n");
     if (clear_bw == 0) clear_bw = 5e3;
@@ -283,7 +288,6 @@ void find_clear_freqs(double *spectrum, sample_meta_data meta_data, double delta
     // }
     
     // Initialize Clear Freq Bands
-    freq_band *clr_bands = clr_freq_bands;
     for (int i = 0; i < CLR_BANDS_MAX; i++) {
         clr_bands[i].f_start = clr_search_sample_start * delta_f - (meta_data.usrp_rf_rate / 2) + meta_data.usrp_fcenter * 1000;
         clr_bands[i].f_end = clr_search_sample_end * delta_f - (meta_data.usrp_rf_rate / 2) + meta_data.usrp_fcenter * 1000;
@@ -326,7 +330,7 @@ void find_clear_freqs(double *spectrum, sample_meta_data meta_data, double delta
                 // Special: If Intersect is less noisy, do not place/skip
                 if (insert_idx > intersect_idx) continue;
                 // printf("    Intersecting Insertion found w/...\n");
-                freq_band inter_band = clr_bands[intersect_idx];
+                // freq_band inter_band = clr_bands[intersect_idx];
 
                 // printf("        i-band = | %d -- %f -- %d|\n", inter_band.f_start, inter_band.noise, inter_band.f_end);
 
@@ -597,6 +601,11 @@ void calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_meta_data
     for (int i = 0; i < CLR_BANDS_MAX; i++)
         printf("Clear Freq Band[%d]: | %dMHz -- Noise: %f -- %dMHz |\n", i, clr_bands[i].f_start, clr_bands[i].noise, clr_bands[i].f_end);
     
+    // // Debug: Print Restricted Freqs
+    // for (int i = 0; i < restricted_num; i++) {
+    //     printf("Restricted[%d]: %d -- %d\n", i, restricted_bands[i].f_start, restricted_bands[i].f_end);
+    // }      
+    
 
     // Debug: Save data to csv
     // write_sample_mag_csv(sample_im_file, sample_im, freq_vector, meta_data);         // Used to check complex Samples after Beamforming; ...
@@ -618,6 +627,9 @@ void calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_meta_data
 clear_freq clear_freq_search(
         fftw_complex **raw_samples, 
         int clear_freq_range[],
+        int fcenter,
+        int beam_num,
+        int smsep,
         freq_band *restricted_bands, 
         int restrict_num,
         freq_band *clr_bands
@@ -629,16 +641,18 @@ clear_freq clear_freq_search(
 
     // Initial Data Variables
     sample_meta_data meta_data = {0};
-    int n_beams, beam_num;
+    int n_beams;
+    // beam_num;
     double beam_sep;
     freq_data freq_data;
 
     // Load in data for Clear Freq Calculation
+    meta_data.usrp_fcenter = fcenter;
     read_input_data(input_file_path, &meta_data, &freq_data.clear_freq_range, &raw_samples);
 
-    // Load in data for Beam Angle Calculation
+    // Beam Angle Calculation
     load_beam_config(&meta_data.x_spacing, &n_beams, &beam_sep);
-    beam_num = 1;
+    double beam_angle = calc_beam_angle(n_beams, beam_num, beam_sep);  
 
     printf("num_samples: %d\nx_spacing: %lf\nusrp_rf_rate: %d\nusrp_fcenter: %d\n",
         meta_data.number_of_samples,
@@ -646,7 +660,7 @@ clear_freq clear_freq_search(
         meta_data.usrp_rf_rate,
         meta_data.usrp_fcenter
     );       
-    printf("n_beams: %d\nbeam_sep: %f\nbeam_num: %d\n", n_beams, beam_sep, beam_num);
+    printf("n_beams: %d\nbeam_sep: %f\nbeam_num: %d\nbeam_angle: %f\n", n_beams, beam_sep, beam_num, beam_angle);
 
     // Check last sample
     // fftw_complex sample = raw_samples[meta_data.num_antennas - 1][meta_data.number_of_samples - 1];
@@ -655,11 +669,10 @@ clear_freq clear_freq_search(
 
 
     // XXX: Define other parameters
-    // double restricted_frequencies[] = { 0,0 };
-    // double beam_angle = calc_beam_angle(n_beams, beam_num, beam_sep);  
     // double clear_freq_range[] = { 12 * pow(10,6), 12.5 * pow(10,6) };
-    double beam_angle = 0.08482300164692443;        // in radians
-    double smsep = .0003; // 1 / (2 * 250 * pow(10, 3));      // ~4 ms
+    // double beam_angle = 0.08482300164692443;        // in radians
+    // double smsep = .0003; // 1 / (2 * 250 * pow(10, 3));      // ~4 ms
+    smsep = smsep / 1000000;
 
     // Stopwatch Start
     double t1,t2;

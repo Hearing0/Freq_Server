@@ -24,16 +24,16 @@
 #ifndef CLR_BANDS_MAX
 #define CLR_BANDS_MAX 6
 #endif
-#define CLR_STORAGE_NUM 5
+#define CLR_STORAGE_NUM 100
 #define CLR_STORE_FILEPATH "../../../utils/csv_dump/clr_band_storage/"
 
 #define SAMPLES_SHM_SIZE    (ANTENNAS_NUM * SAMPLES_NUM * sizeof(int)) // TODO: Finish 2x2500 test
-#define CLR_RANGE_SHM_SIZE  (2 * sizeof(double))
+#define CLR_RANGE_SHM_SIZE  (2 * sizeof(int))
 #define FCENTER_SHM_SIZE    (1 * sizeof(int))
 #define BEAM_NUM_SHM_SIZE   (1 * sizeof(int))
-#define SAMPLE_SEP_SHM_SIZE (1 * sizeof(double))
+#define SAMPLE_SEP_SHM_SIZE (1 * sizeof(int))
 #define RESTRICT_SHM_SIZE   (RESTRICT_NUM * 2 * sizeof(int))          // 2 = start and end freqs
-#define META_DATA_SHM_SIZE  (5 * sizeof(double))
+#define META_DATA_SHM_SIZE  (18 * sizeof(double))
 #define CLR_BANDS_SHM_SIZE  (CLR_BANDS_MAX * 4 * 3)     // TODO: Round to convert freqs to int again 
 
 // Shared Memory and Semaphore Names 
@@ -186,7 +186,7 @@ void read_int(void *result, int *shm_ptr, int elem_num) {
         int *result_ptr = (int *) result;
         for (int i = 0; i < elem_num; i++) {
             result_ptr[i] = shm_ptr[i];
-            printf("    read_int: %d\n", i);
+            if (VERBOSE) printf("    read_int: %d\n", result_ptr[i]);
         }
     } else {
         printf("Error: Use read_int_single() for singleton variables\n");
@@ -194,7 +194,8 @@ void read_int(void *result, int *shm_ptr, int elem_num) {
 }
 
 void read_int_single(int result, int *shm_ptr) {
-    result = shm_ptr[0];
+    result = *shm_ptr;
+    if (VERBOSE) printf("    read_int: %d\n", result);
 }
 
 
@@ -367,7 +368,7 @@ int main() {
         }
     }
     freq_band *restricted_freq = NULL;
-    restricted_freq = (freq_band *)malloc(RESTRICT_SHM_SIZE);
+    restricted_freq = (freq_band *)malloc(RESTRICT_NUM * sizeof(freq_band));
     if (restricted_freq == NULL) {
         perror("Error allocating memory for restricted_freq elements");
         exit(EXIT_FAILURE);
@@ -395,11 +396,12 @@ int main() {
     int clr_range[2] = {0};
     int fcenter = 0;
     int beam_num = 0;
-    double sample_sep = 0;
+    int sample_sep = 0;
     sample_meta_data meta_data = {0};
+    meta_data.antenna_list = malloc(14 * sizeof(int));
             
     // Read-in Restricted Frequencies
-    char *restrict_file = "/home/df/Desktop/PSU-SuperDARN/Freq_Server/utils/misc_param/restrict.dat.inst";
+    char *restrict_file = "/home/radar/repos/SuperDARN_MSI_ROS/linux/home/radar/ros.3.6/tables/superdarn/site/site.mcm/restrict.dat.mcm";
     read_restrict(restrict_file, restricted_freq, RESTRICT_NUM);
 
     // Continuously process clients via shared memory
@@ -411,19 +413,22 @@ int main() {
         sem_wait(sf_server.sem);   
 
         // If initialization data flagged, read and store data
-        if (sem_trywait(sf_init.sem)){
+        if (sem_trywait(sf_init.sem) == 0){
             printf("[Frequency Server] Awaiting initialization data unlock...\n");
             sem_wait(sl_init.sem);
             printf("[Frequency Server] Initialization data read...\n");
+            // if (*sample_sep_obj.shm_ptr != 0) 
+            read_int_single(sample_sep, sample_sep_obj.shm_ptr);
             // if (restrict_obj.shm_ptr[0] != 0) read_restrict_shm(restricted_freq, restrict_obj.shm_ptr);
             // read(meta_data)
+
             sem_post(sl_init.sem);
             printf("[Frequency Server] Initialization data read; processing...\n");
             // storeInRadarTable(restrict_freq, meta_data)
             printf("[Frequency Server] Initialization data processed...\n");
         }
         // If samples flagged (& intialized), process clear frequency
-        if (sem_trywait(sf_samples.sem) && restricted_freq != NULL){
+        if (sem_trywait(sf_samples.sem) == 0 && restricted_freq != NULL){
             // Wait to read-in data
             printf("[Frequency Server] Awaiting sample data unlock...\n");
             sem_wait(sl_samples.sem);
@@ -433,23 +438,25 @@ int main() {
             read_sample_shm(temp_samples, samples_obj.shm_ptr);
             printf("[Frequency Server] Samples done...\n");
             
-            if (clr_range_obj.shm_ptr[0] != 0) read_int(clr_range, clr_range_obj.shm_ptr, 2);
+            // if (*clr_range_obj.shm_ptr != 0) 
+            read_int(clr_range, clr_range_obj.shm_ptr, 2);
             printf("clr_range: %d -- %d\n", clr_range[0], clr_range[1]);
             printf("[Frequency Server] Clear Range done...\n");
 
-            if (fcenter_obj.shm_ptr[0] != 0) {
+            // if (*fcenter_obj.shm_ptr != 0) {
                 // int *fcenter_ptr;
                 read_int_single(fcenter, fcenter_obj.shm_ptr);
                 // fcenter = *fcenter_ptr;
                 printf("fcenter: %d\n", fcenter);
-            }
+            // }
             printf("[Frequency Server] Freq Center done...\n");
 
+            // printf("test    beam_num: %d", *beam_num_obj.shm_ptr);
 
-            if (beam_num_obj.shm_ptr[0] != 0) {
+            // if (*beam_num_obj.shm_ptr != 0) {
                 read_int_single(beam_num, beam_num_obj.shm_ptr);
                 printf("beam_num: %d\n", beam_num);
-            }
+            // }
             printf("[Frequency Server] Beam Number done...\n");
 
             sem_post(sl_samples.sem);
@@ -461,6 +468,9 @@ int main() {
             clear_freq_search(
                 temp_samples, 
                 clr_range,
+                fcenter,
+                beam_num,
+                sample_sep,
                 restricted_freq, 
                 RESTRICT_NUM,
                 clr_bands                
@@ -498,3 +508,5 @@ int main() {
 
     return 0;
 }
+
+    // char *restrict_file = "/home/radar/repos/SuperDARN_MSI_ROS/linux/home/radar/ros.3.6/tables/superdarn/site/site.mcm/restrict.dat.mcm";

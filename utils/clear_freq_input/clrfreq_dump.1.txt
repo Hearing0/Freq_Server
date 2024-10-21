@@ -1,7 +1,7 @@
 number_of_samples: 2500
 beam_angle: 0.08482300164692443
 usrp_rf_rate: 5000000
-usrp_fcenter: 12000.0
+usrp_fcenter: 10600.0
 x_spacing: 15.24
 antenna_list: 0,2,3,5,7,8,9,10,11,12,13,14,16,18
 raw_samples:

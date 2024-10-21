@@ -173,18 +173,18 @@ void read_input_data(const char *filename, sample_meta_data *meta_data, double *
     while (fgets(line, sizeof(line), file)) {
         if (sscanf(line, "number_of_samples: %d", &meta_data->number_of_samples) == 1) continue;
         if (sscanf(line, "usrp_rf_rate: %d", &meta_data->usrp_rf_rate) == 1) continue;
-        if (sscanf(line, "usrp_fcenter: %d", &meta_data->usrp_fcenter) == 1) continue;
-        // if (sscanf(line, "x_spacing: %lf", &meta_data->x_spacing) == 1) continue;
-        if (strncmp(line, "clear_freq_range:", 15) == 0 && TEST_CLR_RANGE) {
-            clear_freq_range = realloc(clear_freq_range, 2 * sizeof(double));
-            int i = 0;
-            char *token = strtok(line + 16, ",");
-            while (token != NULL) {
-                (*clear_freq_range)[i] = atof(token);
-                i++;
-            }
-            continue;
-        }
+        // if (sscanf(line, "usrp_fcenter: %d", &meta_data->usrp_fcenter) == 1) continue;
+        if (sscanf(line, "x_spacing: %lf", &meta_data->x_spacing) == 1) continue;
+        // if (strncmp(line, "clear_freq_range:", 15) == 0 && TEST_CLR_RANGE) {
+        //     clear_freq_range = realloc(clear_freq_range, 2 * sizeof(double));
+        //     int i = 0;
+        //     char *token = strtok(line + 16, ",");
+        //     while (token != NULL) {
+        //         (*clear_freq_range)[i] = atof(token);
+        //         i++;
+        //     }
+        //     continue;
+        // }
         
         // Antenna List Data
         if (strncmp(line, "antenna_list:", 13) == 0) {
@@ -206,32 +206,32 @@ void read_input_data(const char *filename, sample_meta_data *meta_data, double *
         }
 
         // Raw Sample Data
-        if (strncmp(line, "raw_samples:", 12) == 0 && TEST_SAMPLES) {
-            printf("[Clear Freq Search] Aquiring test four_spectrums from pickle files...\n");
-            // Allocate mem
-            *raw_samples = (fftw_complex **)fftw_malloc(meta_data->num_antennas * sizeof(fftw_complex *));
-            for (int i = 0; i < meta_data->num_antennas; i++) {
-                (*raw_samples)[i] = (fftw_complex *)fftw_malloc(meta_data->number_of_samples * sizeof(fftw_complex));
-            }
-            if (*raw_samples == NULL) {
-                perror("Error allocating memory for raw four_spectrums");
-                exit(EXIT_FAILURE);
-            }
+        // if (strncmp(line, "raw_samples:", 12) == 0 && TEST_SAMPLES) {
+        //     printf("[Clear Freq Search] Aquiring test four_spectrums from pickle files...\n");
+        //     // Allocate mem
+        //     *raw_samples = (fftw_complex **)fftw_malloc(meta_data->num_antennas * sizeof(fftw_complex *));
+        //     for (int i = 0; i < meta_data->num_antennas; i++) {
+        //         (*raw_samples)[i] = (fftw_complex *)fftw_malloc(meta_data->number_of_samples * sizeof(fftw_complex));
+        //     }
+        //     if (*raw_samples == NULL) {
+        //         perror("Error allocating memory for raw four_spectrums");
+        //         exit(EXIT_FAILURE);
+        //     }
             
-            // Store data
-            for (int i = 0; i < meta_data->num_antennas; i++) {
-                fftw_complex *ant_samples = (*raw_samples)[i];
+        //     // Store data
+        //     for (int i = 0; i < meta_data->num_antennas; i++) {
+        //         fftw_complex *ant_samples = (*raw_samples)[i];
 
-                for (int j = 0; j < meta_data->number_of_samples; j++) {
-                    double real, imag;
-                    fgets(line, sizeof(line), file);
-                    sscanf(line, "%lf,%lf", &real, &imag);
+        //         for (int j = 0; j < meta_data->number_of_samples; j++) {
+        //             double real, imag;
+        //             fgets(line, sizeof(line), file);
+        //             sscanf(line, "%lf,%lf", &real, &imag);
                     
-                    ant_samples[j] = real + I * imag;
-                }
-            }
-            break;
-        }
+        //             ant_samples[j] = real + I * imag;
+        //         }
+        //     }
+        //     break;
+        // }
     }
 
     fclose(file);
@@ -240,7 +240,7 @@ void read_input_data(const char *filename, sample_meta_data *meta_data, double *
 void read_restrict(char *filepath, freq_band *restricted_freq, int restricted_num) {
     FILE *file = fopen(filepath, "r");
     if (file == NULL) {
-        perror("Error opening file");
+        perror("Error opening Restrict.dat file");
         exit(EXIT_FAILURE);
     }
 
