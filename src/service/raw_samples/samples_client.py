@@ -36,7 +36,7 @@ class ClearFrequencyService():
     CLR_BANDS_ELEM_NUM  = CLR_BAND_MAX * 3                # 2 = start & stop freqs and noise
     
     SAMPLES_SHM_SIZE    = (ANTENNAS_NUM * SAMPLES_NUM * INT_SIZE) 
-    CLR_RANGE_SHM_SIZE  = (2 * DOUBLE_SIZE)
+    CLR_RANGE_SHM_SIZE  = (2 * INT_SIZE)
     FCENTER_SHM_SIZE    = (1 * INT_SIZE)
     BEAM_NUM_SHM_SIZE   = (1 * INT_SIZE)
     SAMPLE_SEP_SHM_SIZE = (1 * INT_SIZE)

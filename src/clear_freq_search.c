@@ -66,7 +66,7 @@ void load_beam_config(double *x_spacing, int *n_beams, double *beam_sep){
         return;
     }
 
-    *x_spacing = config.array_info.x_spacing;
+    // *x_spacing = config.array_info.x_spacing;
     *n_beams = config.array_info.nbeams;
     *beam_sep = config.array_info.beam_sep;
 }
@@ -623,15 +623,14 @@ void calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_meta_data
 
 // XXX: Add a initialization???
 
-// int main() {
 clear_freq clear_freq_search(
         fftw_complex **raw_samples, 
         int clear_freq_range[],
-        int fcenter,
         int beam_num,
         int smsep,
         freq_band *restricted_bands, 
         int restrict_num,
+        sample_meta_data meta_data,
         freq_band *clr_bands
     ) {
 
@@ -640,21 +639,20 @@ clear_freq clear_freq_search(
     // const char *output_file_path = "../utils/txt_output/result.txt";
 
     // Initial Data Variables
-    sample_meta_data meta_data = {0};
+    // sample_meta_data meta_data = {0};
     int n_beams;
     // beam_num;
     double beam_sep;
     freq_data freq_data;
 
     // Load in data for Clear Freq Calculation
-    meta_data.usrp_fcenter = fcenter;
     read_input_data(input_file_path, &meta_data, &freq_data.clear_freq_range, &raw_samples);
 
     // Beam Angle Calculation
     load_beam_config(&meta_data.x_spacing, &n_beams, &beam_sep);
     double beam_angle = calc_beam_angle(n_beams, beam_num, beam_sep);  
 
-    printf("num_samples: %d\nx_spacing: %lf\nusrp_rf_rate: %d\nusrp_fcenter: %d\n",
+    printf("[Clear Search] num_samples: %d\nx_spacing: %lf\nusrp_rf_rate: %d\nusrp_fcenter: %d\n",
         meta_data.number_of_samples,
         meta_data.x_spacing,
         meta_data.usrp_rf_rate,

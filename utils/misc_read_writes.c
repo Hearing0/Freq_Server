@@ -174,7 +174,7 @@ void read_input_data(const char *filename, sample_meta_data *meta_data, double *
         if (sscanf(line, "number_of_samples: %d", &meta_data->number_of_samples) == 1) continue;
         if (sscanf(line, "usrp_rf_rate: %d", &meta_data->usrp_rf_rate) == 1) continue;
         // if (sscanf(line, "usrp_fcenter: %d", &meta_data->usrp_fcenter) == 1) continue;
-        if (sscanf(line, "x_spacing: %lf", &meta_data->x_spacing) == 1) continue;
+        // if (sscanf(line, "x_spacing: %lf", &meta_data->x_spacing) == 1) continue;
         // if (strncmp(line, "clear_freq_range:", 15) == 0 && TEST_CLR_RANGE) {
         //     clear_freq_range = realloc(clear_freq_range, 2 * sizeof(double));
         //     int i = 0;
