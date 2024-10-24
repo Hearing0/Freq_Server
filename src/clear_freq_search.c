@@ -553,16 +553,14 @@ void calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_meta_data
     fftw_destroy_plan(plan);
     fftw_free(four_spectrums);
 
-    /// END of Spectrum Calc
-    // TODO: Plot usrp/antenna im and re separately (4 plots) 
-    //          to confirm that one of them is correctly all zeros for im
-
+    /// END of Spectrum Calculations
+    
     // if (VERBOSE) printf("delta_f: %f\nnum_samples: %d\nfcenter: %d\n", delta_f, num_samples, meta_data->usrp_fcenter * 1000);
 
 
     // Mask restricted frequencies
     if (restricted_bands != NULL) mask_restricted_freq(avg_spectrum, freq_vector_avg, delta_f_avg, num_avg_samples, restricted_bands, restricted_num);
-    printf("------f_start: %f\nf_end: %f\n",freq_vector_avg[0], freq_vector_avg[num_avg_samples - 1]);
+    printf("------f_start: %f\n      f_end: %f\n",freq_vector_avg[0], freq_vector_avg[num_avg_samples - 1]);
 
     int clear_sample_start = (int) round((clear_freq_range[0] - f_start) / delta_f);
     int clear_sample_end = (int) round((clear_freq_range[1] - f_start) / delta_f);
@@ -579,7 +577,7 @@ void calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_meta_data
     t1 = clock();
     find_clear_freqs(avg_spectrum, *meta_data, delta_f_avg, clear_freq_range[0], clear_freq_range[1], clear_bw, clr_bands);
     t2 = clock();
-    if (VERBOSE) printf("find_clear_freqs (ms): %lf\n", ((double) (t2 - t1)) / (CLOCKS_PER_SEC * 1000));
+    if (VERBOSE) printf("find_clear_freqs (s): %lf\n", ((double) (t2 - t1)) / (CLOCKS_PER_SEC));
 
     // Debug: Output results
     for (int i = 0; i < CLR_BANDS_MAX; i++)
@@ -679,5 +677,5 @@ clear_freq clear_freq_search(
     
     // Print processing time; Stopwatch End
     t2 = clock();
-    printf("clear_freq_search (ms): %lf\n", ((double) (t2 - t1)) / (CLOCKS_PER_SEC * 1000));
+    printf("clear_freq_search (s): %lf\n", ((double) (t2 - t1)) / (CLOCKS_PER_SEC));
 };

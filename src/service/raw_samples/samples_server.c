@@ -17,7 +17,7 @@
 // #define DOUBLE_SIZE = 8
 
 
-#define SAMPLES_NUM     2500
+#define SAMPLES_NUM     20000
 #define ANTENNAS_NUM    3
 #define ANTENNA_ELEM    3
 #define META_ELEM       4                   // 4 = 5 - 1 (fcenter has unique obj)

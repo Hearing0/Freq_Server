@@ -22,7 +22,7 @@ class ClearFrequencyService():
     DOUBLE_SIZE = 8
     
     # Shared Memory Object and Semaphores Constants
-    SAMPLES_NUM  = 2500
+    SAMPLES_NUM  = 20000
     ANTENNAS_NUM = 3
     ANTENNA_ELEM = 3   
     RESTRICT_NUM = 15
