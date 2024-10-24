@@ -237,6 +237,26 @@ void read_input_data(const char *filename, sample_meta_data *meta_data, double *
     fclose(file);
 }
 
+/**
+ * @brief  Loads in the beam configuration from array_config.ini. 
+ * @note   By DF
+ * @param  *n_beams:    Number of beams
+ * @param  *beam_sep:   Angle Offset between beams (in degrees)
+ * @retval None
+ */
+void read_array_config(const char *config_path, int *n_beams, double *beam_sep){
+    Config config;
+
+    if (ini_parse(config_path, config_ini_handler, &config) < 0) {
+        printf("Can't load 'config.ini'\n");
+        return;
+    }
+
+    // *x_spacing = config.array_info.x_spacing;
+    *n_beams = config.array_info.nbeams;
+    *beam_sep = config.array_info.beam_sep;
+}
+
 void read_restrict(char *filepath, freq_band *restricted_freq, int restricted_num) {
     FILE *file = fopen(filepath, "r");
     if (file == NULL) {
