@@ -62,8 +62,6 @@ double calc_beam_angle(int n_beams, int beam_num, double beam_sep) {
     // Calculate Beamforming shift
     double center_beam = ( (double) n_beams - 1) / 2;
 
-    printf("calc_beam_angle center_beam: %f\n", center_beam);
-
     // Calculate Beam Azimuth
     double b_azi = ((beam_num - center_beam) * beam_sep) * PI / 180;
     if (VERBOSE){
@@ -437,6 +435,7 @@ void calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_meta_data
             double imag_sample = cimag(raw_samples[aidx][i]);
             double real_phase = creal(phasing_vector[aidx]);
             double imag_phase = cimag(phasing_vector[aidx]);
+            if (VERBOSE && i < 4) printf("sample[%d][%d]\n", aidx, i);
             if (VERBOSE && i == 2499) {
                 printf("sample[%d][2499]    = %f + %fi\n", aidx, real_sample, imag_sample);
                 printf("phase[%d]           = %f + %fi\n", aidx, real_phase, imag_phase);
@@ -642,7 +641,7 @@ clear_freq clear_freq_search(
     double beam_angle = calc_beam_angle(n_beams, beam_num, beam_sep);  
 
     printf("\n[Frequency Server] =--- Clear Freq Variables ---=\n");
-    printf("[Clear Search] num_samples: %d\nnum_antennas: %d\nx_spacing: %lf\nusrp_rf_rate: %d\nusrp_fcenter: %d\n",
+    printf("num_samples: %d\nnum_antennas: %d\nx_spacing: %lf\nusrp_rf_rate: %d\nusrp_fcenter: %d\n",
         meta_data.number_of_samples,
         meta_data.num_antennas,
         meta_data.x_spacing,

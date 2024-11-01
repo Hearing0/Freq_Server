@@ -22,27 +22,27 @@ class ClearFrequencyService():
     DOUBLE_SIZE = 8
     
     # Shared Memory Object and Semaphores Constants
-    SAMPLES_NUM  = 20000
-    ANTENNAS_NUM = 3
-    ANTENNA_ELEM = 3   
+    SAMPLES_NUM  = 2500 #20000
+    ANTENNA_NUM = 2
     RESTRICT_NUM = 15
-    META_ELEM    = 4                                    # 4 = 5 - 1 (fcenter has unique obj)
+    META_ELEM    = 3                                    # 4 = 5 - 1 (fcenter has unique obj)
     CLR_BAND_MAX = 6
     
-    SAMPLES_ELEM_NUM    = ANTENNAS_NUM * SAMPLES_NUM * 2
+    SAMPLES_ELEM_NUM    = ANTENNA_NUM * SAMPLES_NUM * 2
     CLR_RANGE_ELEM_NUM  = 2
     RESTRICT_ELEM_NUM   = RESTRICT_NUM * 2
-    META_ELEM_NUM       = META_ELEM + ANTENNA_ELEM
+    META_ELEM_NUM       = META_ELEM + ANTENNA_NUM
     CLR_BANDS_ELEM_NUM  = CLR_BAND_MAX * 3                # 2 = start & stop freqs and noise
     
-    SAMPLES_SHM_SIZE    = (ANTENNAS_NUM * SAMPLES_NUM * 2 * INT_SIZE) 
-    CLR_RANGE_SHM_SIZE  = (2 * INT_SIZE)
-    FCENTER_SHM_SIZE    = (1 * INT_SIZE)
-    BEAM_NUM_SHM_SIZE   = (1 * INT_SIZE)
-    SAMPLE_SEP_SHM_SIZE = (1 * INT_SIZE)
-    RESTRICT_SHM_SIZE   = (RESTRICT_NUM * 2 * INT_SIZE)          # 2 = start and end freqs
-    META_DATA_SHM_SIZE  = ((META_ELEM + ANTENNA_ELEM) * DOUBLE_SIZE)
-    CLR_BANDS_SHM_SIZE  = (CLR_BAND_MAX * INT_SIZE * 3)     # TODO: Round to convert freqs to int again 
+    SAMPLES_SHM_SIZE        = (ANTENNA_NUM * SAMPLES_NUM * 2 * INT_SIZE) 
+    CLR_RANGE_SHM_SIZE      = (2 * INT_SIZE)
+    FCENTER_SHM_SIZE        = (1 * INT_SIZE)
+    BEAM_NUM_SHM_SIZE       = (1 * INT_SIZE)
+    SAMPLE_SEP_SHM_SIZE     = (1 * INT_SIZE)
+    RESTRICT_SHM_SIZE       = (RESTRICT_NUM * 2 * INT_SIZE)          # 2 = start and end freqs
+    META_DATA_SHM_SIZE      = ((META_ELEM + ANTENNA_NUM) * DOUBLE_SIZE)
+    ANTENNA_SHM_SIZE        = (1 * INT_SIZE)
+    CLR_BANDS_SHM_SIZE      = (CLR_BAND_MAX * INT_SIZE * 3)     # TODO: Round to convert freqs to int again 
     
     RETRY_ATTEMPTS = 5
     RETRY_DELAY = 2  # seconds
@@ -55,12 +55,13 @@ class ClearFrequencyService():
     SAMPLE_SEP_SHM_NAME =       "/sample_sep"
     RESTRICT_SHM_NAME =         "/restricted_freq"
     META_DATA_SHM_NAME =        "/meta_data"
+    ANTENNA_SHM_NAME =          "/antenna_num"
     CLRFREQ_SHM_NAME =          "/clear_freq"
     ACTIVE_CLIENTS_SHM_NAME =   "/active_clients"   # For Debugging
     
     SAMPLE_PARAM_NUM =      4
     RESTRICT_PARAM_NUM =    2
-    PARAM_NUM =             8
+    PARAM_NUM =             9
     
     SEM_F_CLIENT =  "/sf_client"               # For reserving client and server roles during data transfer
     SEM_F_SERVER =  "/sf_server"               # And for signalling specific data transfers 
@@ -79,6 +80,7 @@ class ClearFrequencyService():
     
     semaphores = []
     shm_objects = []
+    temp_antenna_num = ANTENNA_NUM
     
     def __init__(self):
         try:
@@ -109,6 +111,7 @@ class ClearFrequencyService():
                 self.create_shm_obj(self.SAMPLE_SEP_SHM_NAME,   self.SAMPLE_SEP_SHM_SIZE, ),
                 self.create_shm_obj(self.RESTRICT_SHM_NAME,     self.RESTRICT_SHM_SIZE  , self.RESTRICT_ELEM_NUM), 
                 self.create_shm_obj(self.META_DATA_SHM_NAME,    self.META_DATA_SHM_SIZE , self.META_ELEM_NUM),
+                self.create_shm_obj(self.ANTENNA_SHM_NAME,      self.ANTENNA_SHM_SIZE   , ),
                 self.create_shm_obj(self.CLRFREQ_SHM_NAME,      self.CLR_BANDS_SHM_SIZE , self.CLR_BANDS_ELEM_NUM), 
             ]
 
@@ -141,6 +144,7 @@ class ClearFrequencyService():
                     - 'shm_ptr' or pointer 
                     - 'shm_fd' or file descriptor 
                     - 'size' of the file/SHM object
+                    - 'elem_num' or number of elements the object contains
         """
         return {
             'name': name,
@@ -495,18 +499,40 @@ class ClearFrequencyService():
                 # TODO: write to meta_data after adding auto-padding to samples for num_antenna  
                 # TODO: Implemented meta_data obj after smsep obj
                 if meta_data is not None:
+                    
+                    # If antenna length has changed, send, set, and sync with server
+                    if self.temp_antenna_num != len(meta_data['antenna_list']):
+                        print(f"[Frequency Client] Antenna_num changed. Reallocating memory")
+                        self.temp_antenna_num = len(meta_data['antenna_list'])
+                        
+                        # Send
+                        print(f"[Frequency Client] Data Write Progress: {self.shm_objects[7]['name']}")
+                        self.write_data(self.shm_objects[7], len(meta_data['antenna_list']))
+                        
+                        
+                        # Reallocate meta SHM
+                        meta_obj = self.shm_objects[6]
+                        meta_obj['elem_num'] = len(meta_data['antenna_list']) + self.META_ELEM
+                        meta_obj['size'] = meta_obj['elem_num'] * self.DOUBLE_SIZE
+                        os.ftruncate(meta_obj['shm_fd'], meta_obj['size'])
+                        meta_obj['shm_ptr'] = mmap.mmap(meta_obj['shm_fd'], meta_obj['size'], mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE)
+                        
+                        # Reallocate samples SHM
+                        samples_obj = self.shm_objects[0]
+                        samples_obj['elem_num'] = len(meta_data['antenna_list']) * self.SAMPLES_NUM * 2
+                        samples_obj['size'] = samples_obj['elem_num'] * self.INT_SIZE
+                        os.ftruncate(samples_obj['shm_fd'], samples_obj['size'])
+                        samples_obj['shm_ptr'] = mmap.mmap(samples_obj['shm_fd'], samples_obj['size'], mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE)
+                    
                     print(f"[Frequency Client] Data Write Progress: {self.shm_objects[6]['name']}")
                     
                     # Rearrange meta_data ordering
                     meta_data_list = [
                         meta_data['antenna_list'],
-                        len(meta_data['antenna_list']),
                         meta_data['number_of_samples'],
                         meta_data['x_spacing'],
                         meta_data['usrp_rf_rate'],
                     ]
-                    print(meta_data_list)
-                    
                     self.write_data(self.shm_objects[6], meta_data_list, 'meta')
                     
                 self.sl_init['sem'].release()
@@ -543,7 +569,7 @@ class ClearFrequencyService():
                 self.sl_clrfreq['sem'].acquire()
                 print("[clearFrequencyService] Recieved Server Response. Reading Clear Freq data...")
                 new_noise_data = []
-                new_clrfreq_data = self.read_m_data(self.shm_objects[7])
+                new_clrfreq_data = self.read_m_data(self.shm_objects[8])
                 new_clrfreq_data, new_noise_data = self.repack_data(new_clrfreq_data, True)
                 for clr_freq in zip(new_clrfreq_data, new_noise_data):
                     print(f"[clearFrequencyService] Clear Freq Band: | {clr_freq[0]} (Hz), {clr_freq[1]} (N/A) |")
@@ -766,7 +792,8 @@ def read_restrict_file(restrict_file):
 RESTRICT_FILE = "/home/df/Desktop/PSU-SuperDARN/Freq_Server/utils/misc_param/restrict.dat.inst"
 CFS = ClearFrequencyService()
 
-raw_samples, meta_data = read_sample_pickle("/data/repos/Freq_Server/utils/pickle_input/clrfreq_dump.1.pickle")
+# raw_samples, meta_data = read_sample_pickle("/data/repos/Freq_Server/utils/pickle_input/clrfreq_dump.1.pickle")
+raw_samples, meta_data = read_sample_pickle("/home/df/Desktop/PSU-SuperDARN/Freq_Server/utils/pickle_input/clrfreq_dump.1.pickle")
 clear_freq_range = [ int(12 * pow(10,6)), int(12.5 * pow(10,6)) ]
 # restrict_data=read_restrict_file(RESTRICT_FILE)
 
@@ -780,14 +807,24 @@ trimmed_samples = raw_samples[:1]         #HACK: writes only first two antenna's
 #                 meta_data=meta_data
 #                 )
 
-# print(len(meta_data['antenna_list']))
+print(meta_data['antenna_list'])
 
-CFS.sendSamples(trimmed_samples, 
+CFS.sendSamples(raw_samples, 
                 clr_range=clear_freq_range, 
                 fcenter=12000,
                 beam_num=1,
                 sample_sep=340,
                 meta_data=meta_data
                 )
+
+# meta_data['antenna_list'] = [0, 2]
+
+# CFS.sendSamples(trimmed_samples[:0], 
+#                 clr_range=clear_freq_range, 
+#                 fcenter=12000,
+#                 beam_num=1,
+#                 sample_sep=340,
+#                 meta_data=meta_data
+#                 )
 
 # CFS.sendSamples(raw_samples)
