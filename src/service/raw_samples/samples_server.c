@@ -13,9 +13,9 @@
 #include <time.h>
 #include "../../clear_freq_search.c"
 
-
+// Default Length of Variables (some dynamically change during runtime)
 #define SAMPLES_NUM     2500 //20000
-#define ANTENNA_NUM     3
+#define ANTENNA_NUM     16
 #define META_ELEM       3                   // 4 = 5 - 1 (fcenter has unique obj)
 #define RESTRICT_NUM    15 //16             // Number of restricted freq bands in the restrict.dat.inst
 #ifndef CLR_BANDS_MAX
@@ -24,7 +24,7 @@
 #define CLR_STORAGE_NUM 100
 #define CLR_STORE_FILEPATH "../../../utils/csv_dump/clr_band_storage/"
 
-#define SAMPLES_SHM_SIZE        (ANTENNA_NUM * SAMPLES_NUM * 2 * sizeof(int)) // TODO: Finish 2x2500 test
+#define SAMPLES_SHM_SIZE        (ANTENNA_NUM * SAMPLES_NUM * 2 * sizeof(int)) 
 #define CLR_RANGE_SHM_SIZE      (2 * sizeof(int))
 #define FCENTER_SHM_SIZE        (1 * sizeof(int))
 #define BEAM_NUM_SHM_SIZE       (1 * sizeof(int))
@@ -32,7 +32,7 @@
 #define RESTRICT_SHM_SIZE       (RESTRICT_NUM * 2 * sizeof(int))          // 2 = start and end freqs
 #define META_DATA_SHM_SIZE      ((META_ELEM + ANTENNA_NUM) * sizeof(double))
 #define ANTENNA_SHM_SIZE        (1 * sizeof(int))
-#define CLR_BANDS_SHM_SIZE      (CLR_BANDS_MAX * sizeof(int) * 3)     // TODO: Round to convert freqs to int again 
+#define CLR_BANDS_SHM_SIZE      (1 * sizeof(int) * 3)    
 
 // Shared Memory and Semaphore Names 
 #define SAMPLES_SHM_NAME        "/samples"
@@ -142,9 +142,9 @@ void add_fftw_ptr(void *ptr) {
     temp_fftw_ptrs = fftw_malloc(temp_fftw_ptrs_num * sizeof(fftw_complex*));
 }
 
-void read_restrict_shm(freq_band *restricted_freq, int *restrict_shm_ptr) {
+void read_restrict_shm(freq_band *restricted_freq, int *restrict_shm_ptr, int *restricted_num) {
     // Store Restricted Freq
-    for (int i = 0; i < RESTRICT_NUM; i++)
+    for (int i = 0; i < *restricted_num; i++)
     {
         restricted_freq[i].f_start = restrict_shm_ptr[i * 2];
         restricted_freq[i].f_end = restrict_shm_ptr[i * 2 + 1];
@@ -163,11 +163,11 @@ void read_sample_shm(fftw_complex **temp_samples, void *samples_shm_ptr, int ant
             temp_samples[i][j] = s_ptr[i * SAMPLES_NUM + j] + I * s_ptr[i * SAMPLES_NUM + j + 1];
 
             // Debug: Print 5 complex of each antenna batch
-            if (j < 10) {
-                printf("shm[%d]      =   %d + i%d\n", i * SAMPLES_NUM + j, ((int*) samples_shm_ptr)[i * SAMPLES_NUM + j], ((int*) samples_shm_ptr)[i * SAMPLES_NUM + j + 1]);
-                printf("vs\n");
-                printf("temp_samples[%d][%d] =  %f + i%f\n\n", i, j, creal(temp_samples[i][j]), cimag(temp_samples[i][j]));
-            }
+            // if (j < 10) {
+            //     printf("shm[%d]      =   %d + i%d\n", i * SAMPLES_NUM + j, ((int*) samples_shm_ptr)[i * SAMPLES_NUM + j], ((int*) samples_shm_ptr)[i * SAMPLES_NUM + j + 1]);
+            //     printf("vs\n");
+            //     printf("temp_samples[%d][%d] =  %f + i%f\n\n", i, j, creal(temp_samples[i][j]), cimag(temp_samples[i][j]));
+            // }
         }
     }
 }
@@ -274,9 +274,18 @@ void read_single_double(double *result, void *shm_ptr){
 void write_clrfreq_shm(freq_band *clr_bands, int *ptr) {
     int elements_per_band = 3;
     for (int i = 0; i < CLR_BANDS_MAX; i++) {
-        ptr[i * elements_per_band]      = clr_bands[i].f_start;
-        ptr[i * elements_per_band + 1]  = clr_bands[i].noise;
-        ptr[i * elements_per_band + 2]  = clr_bands[i].f_end;
+        if (clr_bands[i].is_selected == false) {
+            clr_bands[i].is_selected = true;
+            ptr[i * elements_per_band]      = clr_bands[i].f_start;
+            ptr[i * elements_per_band + 1]  = clr_bands[i].noise;
+            ptr[i * elements_per_band + 2]  = clr_bands[i].f_end;
+
+            printf("[Frequency Server] Sending the following Clear Frequency: \n");
+            printf("    Clear Freq Band[%d][%s]: | %dHz -- Noise: %f -- %dHz |\n", 
+                i, clr_bands[i].is_selected ? "Selected" : "Free", clr_bands[i].f_start, clr_bands[i].noise, clr_bands[i].f_end
+            );
+            break;
+        }
     }
 }
 
@@ -302,25 +311,33 @@ void clean_sem(semaphore sem) {
 }
 
 /**
- * @brief  Deallocates all service semaphores and SHM pointers.
+ * @brief  Deallocates all service semaphores, SHM pointers, pointers, and the pointers' lengths
  * @note   
  * @retval None
  */
 void cleanup() {
     printf("[Frequency Server] Cleaning all semaphores and SHM objects...\n");
     printf("                   Except the active client object!!! (done on client-side)\n");
+
     for (int i = 0; i < SEM_NUM; i++) clean_sem(*semaphores[i]);
+    printf("[Frequency Server] Cleaned all semaphores ...\n");
+
     for (int i = 0; i < PARAM_NUM; i++) clean_obj(*objects[i]);
+    printf("[Frequency Server] Cleaned all objects ...\n");
+
     for (int i = 0; i < temp_fftw_ptrs_num; i++) {
         if (temp_fftw_ptrs[i] != NULL) fftw_free(temp_fftw_ptrs[i]);
     }
+    printf("[Frequency Server] Cleaned all pointers ...\n");
+
     for (int i = 0; i < temp_ptrs_num; i++) {
         if (temp_ptrs[i] != NULL) free(temp_ptrs[i]);
     }
+    printf("[Frequency Server] Cleaned all pointer lengths ...\n");
 }
 
 /**
- * @brief  Catch signals and exit gracefully.
+ * @brief  Catch exit signals and exits gracefully by calling to deallocate all service parameters.
  * @note   
  * @param  sig: Caught signal
  * @retval None
@@ -489,8 +506,9 @@ int main() {
     }
     add_fftw_ptr(temp_samples);
 
+    int restricted_num = RESTRICT_NUM;      // Number of Restricted Freqs at runtime varies depending on site
     freq_band *restricted_freq = NULL;
-    restricted_freq = (freq_band *)malloc(RESTRICT_NUM * sizeof(freq_band));
+    restricted_freq = (freq_band *)malloc(restricted_num * sizeof(freq_band));
     if (restricted_freq == NULL) {
         perror("Error allocating memory for restricted_freq elements");
         exit(EXIT_FAILURE);
@@ -533,7 +551,7 @@ int main() {
     // Read-in Restricted Frequencies
     char *restrict_file = "utils/misc_param/restrict.dat.inst";
     // "/home/radar/repos/SuperDARN_MSI_ROS/linux/home/radar/ros.3.6/tables/superdarn/site/site.mcm/restrict.dat.mcm";
-    read_restrict(restrict_file, restricted_freq, RESTRICT_NUM);
+    read_restrict(restrict_file, restricted_freq, &restricted_num);
 
 
     // Semaphore Flag Debugging
@@ -547,6 +565,9 @@ int main() {
         
         printf("[Frequency Server] Awaiting client response...\n");
         sem_wait(sf_server.sem);   
+
+        double t1,t2;
+        t1 = clock();
 
         // If initialization data flagged, read and store data
         if (sem_trywait(sf_init.sem) == 0){
@@ -703,7 +724,7 @@ int main() {
                 beam_num,
                 sample_sep,
                 restricted_freq, 
-                RESTRICT_NUM,
+                restricted_num,
                 meta_data,
                 clr_bands                
             );
@@ -732,6 +753,9 @@ int main() {
         }
         
         printf("[Frequency Server] Processed Client successfully...\n");
+
+        t2 = clock();
+        printf("[Frequency Server] Processing Time for Client (s): %lf\n", ((double) (t2 - t1)) / (CLOCKS_PER_SEC));
     }
 
     cleanup();

@@ -43,6 +43,7 @@ typedef struct freq_band {
     int f_start;
     int f_end;
     double noise;
+    bool is_selected;
 } freq_band;
 
 
@@ -257,7 +258,7 @@ void read_array_config(const char *config_path, int *n_beams, double *beam_sep){
     *beam_sep = config.array_info.beam_sep;
 }
 
-void read_restrict(char *filepath, freq_band *restricted_freq, int restricted_num) {
+void read_restrict(char *filepath, freq_band *restricted_freq, int *restricted_num) {
     FILE *file = fopen(filepath, "r");
     if (file == NULL) {
         perror("Error opening Restrict.dat file");
@@ -279,8 +280,9 @@ void read_restrict(char *filepath, freq_band *restricted_freq, int restricted_nu
             // printf("Storing r1 & r2...\n");
 
             // Reallocate Mem if exceeded
-            if (restricted_num < i) {
+            if (*restricted_num < i) {
                 restricted_freq = (freq_band *) malloc(i * sizeof(freq_band));
+                *restricted_num = i;
                 if (restricted_freq == NULL) {
                     perror("Error allocating memory for restricted_freq");
                     exit(EXIT_FAILURE);

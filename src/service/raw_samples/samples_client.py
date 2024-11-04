@@ -23,7 +23,7 @@ class ClearFrequencyService():
     
     # Shared Memory Object and Semaphores Constants
     SAMPLES_NUM  = 2500 #20000
-    ANTENNA_NUM = 2
+    ANTENNA_NUM = 16
     RESTRICT_NUM = 15
     META_ELEM    = 3                                    # 4 = 5 - 1 (fcenter has unique obj)
     CLR_BAND_MAX = 6
@@ -32,7 +32,7 @@ class ClearFrequencyService():
     CLR_RANGE_ELEM_NUM  = 2
     RESTRICT_ELEM_NUM   = RESTRICT_NUM * 2
     META_ELEM_NUM       = META_ELEM + ANTENNA_NUM
-    CLR_BANDS_ELEM_NUM  = CLR_BAND_MAX * 3                # 2 = start & stop freqs and noise
+    CLR_BANDS_ELEM_NUM  = 1 * 3                         # 3 = start & stop freqs and noise
     
     SAMPLES_SHM_SIZE        = (ANTENNA_NUM * SAMPLES_NUM * 2 * INT_SIZE) 
     CLR_RANGE_SHM_SIZE      = (2 * INT_SIZE)
@@ -42,7 +42,7 @@ class ClearFrequencyService():
     RESTRICT_SHM_SIZE       = (RESTRICT_NUM * 2 * INT_SIZE)          # 2 = start and end freqs
     META_DATA_SHM_SIZE      = ((META_ELEM + ANTENNA_NUM) * DOUBLE_SIZE)
     ANTENNA_SHM_SIZE        = (1 * INT_SIZE)
-    CLR_BANDS_SHM_SIZE      = (CLR_BAND_MAX * INT_SIZE * 3)     # TODO: Round to convert freqs to int again 
+    CLR_BANDS_SHM_SIZE      = (1 * INT_SIZE * 3)     # TODO: Round to convert freqs to int again 
     
     RETRY_ATTEMPTS = 5
     RETRY_DELAY = 2  # seconds
@@ -591,35 +591,37 @@ class ClearFrequencyService():
             
 
             if active_clients == 0:
-                print("[clearFrequencyService] No active clients remaining; cleaning up shared resources.")
-                try:
-                    posix_ipc.unlink_shared_memory(self.ACTIVE_CLIENTS_SHM_NAME)
-                    print(f"Unlinked shared memory {self.ACTIVE_CLIENTS_SHM_NAME}")
-                except posix_ipc.ExistentialError or ValueError:
-                    print(f"Shared memory {self.ACTIVE_CLIENTS_SHM_NAME} does not exist")
-                
                 self.cleanup_shm()
-                # print("[clearFrequencyService] No active clients remaining, but not cleaning up shared resources to keep service idle.")
     
-    def cleanup_shm(self):
-        for obj in self.shm_objects:
+    def cleanup_shm(self, only_active_clients = False):
+        if only_active_clients is True:
+            print("[clearFrequencyService] No active clients remaining, but not cleaning up shared resources to keep service idle.")
             try:
-                posix_ipc.unlink_shared_memory(obj['name'])
-                print(f"Unlinked shared memory {obj['name']}")
+                posix_ipc.unlink_shared_memory(self.ACTIVE_CLIENTS_SHM_NAME)
+                print(f"Unlinked shared memory {self.ACTIVE_CLIENTS_SHM_NAME}")
             except posix_ipc.ExistentialError or ValueError or AttributeError:
-                print(f"Shared memory {obj['name']} does not exist")
-        try:
-            posix_ipc.unlink_shared_memory(self.ACTIVE_CLIENTS_SHM_NAME)
-            print(f"Unlinked shared memory {self.ACTIVE_CLIENTS_SHM_NAME}")
-        except posix_ipc.ExistentialError or ValueError or AttributeError:
-            print(f"Shared memory {self.ACTIVE_CLIENTS_SHM_NAME} does not exist")
+                print(f"Shared memory {self.ACTIVE_CLIENTS_SHM_NAME} does not exist")
 
-        for sem in self.semaphores:
+        else:
+            print("[clearFrequencyService] No active clients remaining; cleaning up shared resources.")
+            for obj in self.shm_objects:
+                try:
+                    posix_ipc.unlink_shared_memory(obj['name'])
+                    print(f"Unlinked shared memory {obj['name']}")
+                except posix_ipc.ExistentialError or ValueError or AttributeError:
+                    print(f"Shared memory {obj['name']} does not exist")
             try:
-                posix_ipc.unlink_semaphore(sem['name'])
-                print(f"Unlinked semaphore {sem['name']}")
-            except posix_ipc.ExistentialError:
-                print(f"Semaphore {sem['name']} does not exist")
+                posix_ipc.unlink_shared_memory(self.ACTIVE_CLIENTS_SHM_NAME)
+                print(f"Unlinked shared memory {self.ACTIVE_CLIENTS_SHM_NAME}")
+            except posix_ipc.ExistentialError or ValueError or AttributeError:
+                print(f"Shared memory {self.ACTIVE_CLIENTS_SHM_NAME} does not exist")
+
+            for sem in self.semaphores:
+                try:
+                    posix_ipc.unlink_semaphore(sem['name'])
+                    print(f"Unlinked semaphore {sem['name']}")
+                except posix_ipc.ExistentialError:
+                    print(f"Semaphore {sem['name']} does not exist")
                                 
     def flag_debug(self, raw_samples, clr_range=None, fcenter=None, beam_num=None, sample_sep=None, restrict_data=None, meta_data=None):
         
@@ -744,8 +746,8 @@ class ClearFrequencyService():
             
             if active_clients == 0:
                 # print("[clearFrequencyService] No active clients remaining; cleaning up shared resources.")
-                # self.cleanup_shm()
                 print("[clearFrequencyService] No active clients remaining, but not cleaning up shared resources to keep service idle.")
+                self.cleanup_shm()
 
 def read_sample_pickle(pickle_file):
     """ Reads in raw sample data and sample meta data from pickle for a Python 

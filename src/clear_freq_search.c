@@ -26,7 +26,7 @@
 
 
 // Debug Flags
-#define VERBOSE 1
+#define VERBOSE 0
 #define SPECTRAL_AVGING 1
 #define TEST_SAMPLES 0
 #define TEST_CLR_RANGE 1
@@ -580,7 +580,7 @@ void calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_meta_data
 
     // Debug: Output results
     for (int i = 0; i < CLR_BANDS_MAX; i++)
-        printf("Clear Freq Band[%d]: | %dMHz -- Noise: %f -- %dMHz |\n", i, clr_bands[i].f_start, clr_bands[i].noise, clr_bands[i].f_end);
+        printf("Clear Freq Band[%d][%s]: | %dHz -- Noise: %f -- %dHz |\n", i, clr_bands[i].is_selected ? "Selected" : "Free", clr_bands[i].f_start, clr_bands[i].noise, clr_bands[i].f_end);
     
     // // Debug: Print Restricted Freqs
     // for (int i = 0; i < restricted_num; i++) {
