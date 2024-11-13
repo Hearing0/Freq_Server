@@ -1,0 +1,8 @@
+# Ignored Files 
+__pycache__
+
+# Ignored Extensions
+*.csv
+*.log
+*.png
+

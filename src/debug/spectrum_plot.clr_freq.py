@@ -79,4 +79,4 @@ for index, row in clr_freq_data.iterrows():
 
 # Display plot
 plt.legend()
-plt.savefig("plot_with_bands.png")
+plt.savefig("plots/debug/spectrum_plot.clrbands.png")
