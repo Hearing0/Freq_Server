@@ -5,7 +5,8 @@
         "unistd.h": "c",
         "math.h": "c",
         "complex.h": "c",
-        "ini.h": "c"
+        "ini.h": "c",
+        "sstream": "c"
     },
     "docomment.activateOnEnter": true,
     "C_Cpp.errorSquiggles": "enabled",

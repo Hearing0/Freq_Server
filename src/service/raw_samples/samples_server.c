@@ -13,6 +13,13 @@
 #include <time.h>
 #include "../../clear_freq_search.c"
 
+
+
+// Build with the following flags:
+// -lrt -pthread -lfftw3 -lm 
+
+
+
 // Default Length of Variables (some dynamically change during runtime)
 #define SAMPLES_NUM     2500 //20000
 #define ANTENNA_NUM     16
@@ -23,6 +30,7 @@
 #endif
 #define CLR_STORAGE_NUM 100
 #define CLR_STORE_FILEPATH "../../../utils/csv_dump/clr_band_storage/"
+#define SITE_ID_ELEM    3                   // 3 = 3-letter identifier 
 
 #define SAMPLES_SHM_SIZE        (ANTENNA_NUM * SAMPLES_NUM * 2 * sizeof(int)) 
 #define CLR_RANGE_SHM_SIZE      (2 * sizeof(int))
@@ -33,6 +41,7 @@
 #define META_DATA_SHM_SIZE      ((META_ELEM + ANTENNA_NUM) * sizeof(double))
 #define ANTENNA_SHM_SIZE        (1 * sizeof(int))
 #define CLR_BANDS_SHM_SIZE      (1 * sizeof(int) * 3)    
+#define SITE_ID_SHM_SIZE        (SITE_ID_ELEM * sizeof(char))
 
 // Shared Memory and Semaphore Names 
 #define SAMPLES_SHM_NAME        "/samples"
@@ -44,9 +53,10 @@
 #define META_DATA_SHM_NAME      "/meta_data"
 #define ANTENNA_SHM_NAME        "/antenna_num"
 #define CLRFREQ_SHM_NAME        "/clear_freq"
+#define SITE_ID_SHM_NAME        "/site_id"
 #define SAMPLE_PARAM_NUM 4
 #define RESTRICT_PARAM_NUM 2
-#define PARAM_NUM 9
+#define PARAM_NUM 10
 
 #define SEM_F_CLIENT    "/sf_client"               // For Sync and reserving client and server roles during data transfer
 #define SEM_F_SERVER    "/sf_server"    
@@ -70,11 +80,6 @@ typedef struct semaphore {
     const char* name;
     sem_t* sem;
 } semaphore;
-
-
-
-// Build with the following flags:
-// -lrt -pthread -lfftw3 -lm
 
 
 
@@ -114,6 +119,7 @@ shm_obj restrict_obj    = {RESTRICT_SHM_NAME, NULL, -1, RESTRICT_SHM_SIZE};
 shm_obj meta_obj        = {META_DATA_SHM_NAME, NULL, -1, META_DATA_SHM_SIZE};
 shm_obj antenna_obj     = {ANTENNA_SHM_NAME, NULL, -1, ANTENNA_SHM_SIZE};
 shm_obj clrfreq_obj     = {CLRFREQ_SHM_NAME, NULL, -1, CLR_BANDS_SHM_SIZE};
+shm_obj site_id_obj     = {SITE_ID_SHM_NAME, NULL, -1, SITE_ID_SHM_SIZE};
 struct shm_obj *objects[PARAM_NUM] = {
     &samples_obj,
     &clr_range_obj,
@@ -124,6 +130,7 @@ struct shm_obj *objects[PARAM_NUM] = {
     &meta_obj,
     &antenna_obj,
     &clrfreq_obj,
+    &site_id_obj,
 };
 
 void **temp_ptrs;
@@ -252,6 +259,17 @@ void read_meta_data(sample_meta_data *result, void *shm_ptr, int ant_num) {
 
         // if (VERBOSE && i < (ant_num + 2)) printf("    read_meta: %f\n", ref_ptr[i]);
     }
+}
+
+void read_site_id_data(char *result, void *shm_ptr, int id_num) {
+    char *ref_ptr = (char *) shm_ptr;
+
+    for (int i = 0; i < id_num; i++) {
+        *(result + i) = ref_ptr[i];
+        if (VERBOSE) printf("   read_site_id_data[%d]: %c\n", i, result[i]);
+    }
+    result[id_num] = '\0';
+    printf("    read_site_id_data: %s\n", result);
 }
 
 void read_single_int(int *result, void *shm_ptr) {
@@ -546,17 +564,15 @@ int main() {
     sample_meta_data meta_data = {0};
     meta_data.antenna_list = malloc(ANTENNA_NUM * sizeof(int));
     add_ptr(meta_data.antenna_list);
-    int prev_antenna_num = ANTENNA_NUM;
+    int old_antenna_num = ANTENNA_NUM;
             
-    // Read-in Restricted Frequencies
-    char *restrict_file = "utils/misc_param/restrict.dat.inst";
-    // "/home/radar/repos/SuperDARN_MSI_ROS/linux/home/radar/ros.3.6/tables/superdarn/site/site.mcm/restrict.dat.mcm";
-    read_restrict(restrict_file, restricted_freq, &restricted_num);
-
-
-    // Semaphore Flag Debugging
-    // flag_debug();
-
+    // Parameters for Reading Restricted Frequencies
+    char *restrict_file = "";
+    char *site_id = (char*) malloc((SITE_ID_ELEM + 1) * sizeof(char));
+    add_ptr(site_id);
+    char *new_site_id = (char*) malloc((SITE_ID_ELEM + 1) * sizeof(char));
+    add_ptr(new_site_id);
+    char *site_path = getenv("SD_SITE_PATH");
 
     // Continuously process clients via shared memory
     while (1) {
@@ -589,11 +605,12 @@ int main() {
             // if ( *(double*) (meta_obj.shm_ptr) != 0) {
 
                 // Read Antenna number
+                printf("[Frequency Server] Antenna Number reading...\n");
                 read_single_int(&meta_data.num_antennas, antenna_obj.shm_ptr);
 
                 // If new num_antennas, Reallocate meta SHM 
-                if (meta_data.num_antennas != prev_antenna_num) {
-                    prev_antenna_num = meta_data.num_antennas;
+                if (meta_data.num_antennas != old_antenna_num) {
+                    old_antenna_num = meta_data.num_antennas;
                     printf("num of antenna: %d\n", meta_data.num_antennas);
                     
                     // Set Size of Shared Memory Object
@@ -647,6 +664,7 @@ int main() {
                 }
                 
                 // Read Meta Data 
+                    printf("[Frequency Server] Meta Data reading...\n");
                 read_meta_data(&meta_data, meta_obj.shm_ptr, meta_data.num_antennas);
 
                 for (int j = 0; j < meta_data.num_antennas; j++) {
@@ -658,6 +676,32 @@ int main() {
                 printf("     rf_rate     : %d\n", meta_data.usrp_rf_rate);
                 printf("     x_spacing   : %f\n", meta_data.x_spacing);
             // }
+
+            /// Read Restricted Frequency (by grabbing site ID then reading its restricted freq file)
+            printf("[Frequency Server] Site ID reading...\n");
+            read_site_id_data(new_site_id, site_id_obj.shm_ptr, SITE_ID_ELEM);
+            
+            printf("    site_vs_new_site_id: .%s.\n", new_site_id);//(site_id != new_site_id) ? "True" : "False");
+
+            // If first client, proceed to read in Restrict File
+            if (site_id != new_site_id) {
+                site_id = new_site_id;
+                // Get site specific restrict file
+                if (strcmp(new_site_id,"lab") != 0) {
+                    printf("[Frequency Server] Using restrict.dat.inst in site_id\n\n");
+                    // Typical File path is ...
+                    // "/home/radar/repos/SuperDARN_MSI_ROS/linux/home/radar/ros.3.6/tables/superdarn/site/site.mcm/restrict.dat.mcm";
+                    sprintf(restrict_file,"%s/site.%s/restrict.dat.%s",site_path,site_id,site_id);
+                    printf("\nFrequency Server] Using restrict file path: %s\n\n", restrict_file);
+                } 
+                // Default: Get lab testing restrict file
+                else {
+                    printf("\n[Frequency Server] ERROR: Parameter \'site_id\' is missing or set to a \"lab\" setting!\n");
+                    printf("[Frequency Server] Using restrict.dat.inst in Freq_Server/utils/misc_param/\n\n");
+                    restrict_file = "utils/misc_param/restrict.dat.inst";               // File path for lab testing
+                }
+                read_restrict(restrict_file, restricted_freq, &restricted_num);
+            }
 
             sem_post(sl_init.sem);
             printf("[Frequency Server] Initialization data read; processing...\n");
@@ -760,5 +804,3 @@ int main() {
 
     cleanup();
 }
-
-    // char *restrict_file = "/home/radar/repos/SuperDARN_MSI_ROS/linux/home/radar/ros.3.6/tables/superdarn/site/site.mcm/restrict.dat.mcm";

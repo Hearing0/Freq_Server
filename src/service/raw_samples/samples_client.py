@@ -18,6 +18,7 @@ class ClearFrequencyService():
     CLEAN_ON_INACTIVE   = False           # Cleans all semaphores and shared memory objects when there are no Active Clients
     
     # Static Constants
+    CHAR_SIZE = 1
     INT_SIZE = 4
     DOUBLE_SIZE = 8
     
@@ -28,11 +29,13 @@ class ClearFrequencyService():
     META_ELEM    = 3                                    # 4 = 5 - 1 (fcenter has unique obj)
     CLR_BAND_MAX = 6
     
+    
     SAMPLES_ELEM_NUM    = ANTENNA_NUM * SAMPLES_NUM * 2
     CLR_RANGE_ELEM_NUM  = 2
     RESTRICT_ELEM_NUM   = RESTRICT_NUM * 2
     META_ELEM_NUM       = META_ELEM + ANTENNA_NUM
-    CLR_BANDS_ELEM_NUM  = 1 * 3                         # 3 = start & stop freqs and noise
+    CLR_BANDS_ELEM_NUM  = 1 * 3                         # 3     = start & stop freqs and noise
+    SITE_ID_ELEM_NUM    = 1 * 3                         # 1 * 3 = one instance of a 3 letter identifier
     
     SAMPLES_SHM_SIZE        = (ANTENNA_NUM * SAMPLES_NUM * 2 * INT_SIZE) 
     CLR_RANGE_SHM_SIZE      = (2 * INT_SIZE)
@@ -43,6 +46,8 @@ class ClearFrequencyService():
     META_DATA_SHM_SIZE      = ((META_ELEM + ANTENNA_NUM) * DOUBLE_SIZE)
     ANTENNA_SHM_SIZE        = (1 * INT_SIZE)
     CLR_BANDS_SHM_SIZE      = (1 * INT_SIZE * 3)     # TODO: Round to convert freqs to int again 
+    SITE_ID_SHM_SIZE        = (3 * CHAR_SIZE)
+
     
     RETRY_ATTEMPTS = 5
     RETRY_DELAY = 2  # seconds
@@ -58,6 +63,8 @@ class ClearFrequencyService():
     ANTENNA_SHM_NAME =          "/antenna_num"
     CLRFREQ_SHM_NAME =          "/clear_freq"
     ACTIVE_CLIENTS_SHM_NAME =   "/active_clients"   # For Debugging
+    SITE_ID_SHM_NAME =          "/site_id"
+
     
     SAMPLE_PARAM_NUM =      4
     RESTRICT_PARAM_NUM =    2
@@ -113,6 +120,7 @@ class ClearFrequencyService():
                 self.create_shm_obj(self.META_DATA_SHM_NAME,    self.META_DATA_SHM_SIZE , self.META_ELEM_NUM),
                 self.create_shm_obj(self.ANTENNA_SHM_NAME,      self.ANTENNA_SHM_SIZE   , ),
                 self.create_shm_obj(self.CLRFREQ_SHM_NAME,      self.CLR_BANDS_SHM_SIZE , self.CLR_BANDS_ELEM_NUM), 
+                self.create_shm_obj(self.SITE_ID_SHM_NAME,      self.SITE_ID_SHM_SIZE   , self.SITE_ID_ELEM_NUM)
             ]
 
             for obj in self.shm_objects:
@@ -345,6 +353,10 @@ class ClearFrequencyService():
                     # flattened_data.append(ant.item())
                 for i in range (1, len(array_data)):
                     flattened_data.append(array_data[i])
+            elif atype == "sid":
+                for letter in array_data:
+                    flattened_data.append(bytes(letter, 'ascii'))
+                # flattened_data = array_data
             else:
                 # Otherwise, just flatten                
                 list_of_lists = self.find_list_of_lists(array_data)
@@ -366,19 +378,29 @@ class ClearFrequencyService():
             # Determine dtype for Packing
             if atype == 'meta':
                 dtype = 'd'
-            else: dtype = self.detect_dtype(flattened_data)
+            elif atype == "sid":
+                dtype = b'c'
+            else: 
+                dtype = self.detect_dtype(flattened_data)
             print(f"dtype: {dtype}, elem_num: {obj['elem_num']}, ")
                 
-            # Pack and write data
+            print(f"flattened array type: {type(flattened_data)}")
                 
-            if type(flattened_data) is list:  
+            # Pack and write data
+            if type(flattened_data) is list or type(flattened_data) is str:  
                 print("[Frequency Client] new_data len of: ", len(flattened_data))
                 if atype == 'complex':
                     print("[Frequency Client] Writing data:\n", flattened_data[:1], "...")
+                    
                 else:
                     print("[Frequency Client] Writing data:\n", flattened_data)                
                     
                 obj['shm_ptr'].seek(0)
+                if atype == 'sid':
+                    print(f"ascii bytes: {flattened_data}")
+                    print(f"dtype argument: {dtype * obj['elem_num']}")
+                #     obj['shm_ptr'].write(struct.pack(dtype * obj['elem_num'], bytes(flattened_data, 'ascii'))) 
+                # else: 
                 obj['shm_ptr'].write(struct.pack(dtype * obj['elem_num'], *flattened_data)) 
             else:
                 print("[Frequency Client] new_data len of: ", 1)
@@ -390,6 +412,8 @@ class ClearFrequencyService():
         
         except AttributeError:
             print("[Frequency Client] ERROR: Element Size is incorrect. send()'s parameters were likely not assigned properly. Please verify...")
+            print(f"     len of flattened data: {len(flattened_data)}")
+            print(f"     len of encoded flattened data: {len(flattened_data.encode('UTF-8'))}")
                     
     def read_m_data(self, obj):
         """Reads in data from the shared memory file descriptor.
@@ -433,7 +457,7 @@ class ClearFrequencyService():
             return packed_data, noise_data
             
                 
-    def sendSamples(self, raw_samples, clr_range=None, fcenter=None, beam_num=None, sample_sep=None, restrict_data=None, meta_data=None):
+    def sendSamples(self, raw_samples, clr_range=None, fcenter=None, beam_num=None, sample_sep=None, restrict_data=None, meta_data=None, sid = 'lab'):
         """ Waits for client requests, then processes server data, writes client 
             data, and requests server to process new data. When process is 
             terminated, the try/finally block cleans up.
@@ -447,6 +471,7 @@ class ClearFrequencyService():
             sample_sep, 
             restrict_data, 
             meta_data,
+            sid,
         ]
         
         # Special: Re-initialize ClearFreqService
@@ -534,6 +559,11 @@ class ClearFrequencyService():
                         meta_data['usrp_rf_rate'],
                     ]
                     self.write_data(self.shm_objects[6], meta_data_list, 'meta')
+                    
+                # Write Site ID (SID)
+                print(f"[Frequency Client] Data Write Progress: {self.shm_objects[9]['name']}")
+                print(f"    len of objects list is {len(self.shm_objects)}")
+                self.write_data(self.shm_objects[9], sid, 'sid')
                     
                 self.sl_init['sem'].release()
                 self.sf_init['sem'].release()
@@ -816,7 +846,8 @@ CFS.sendSamples(raw_samples,
                 fcenter=12000,
                 beam_num=1,
                 sample_sep=340,
-                meta_data=meta_data
+                meta_data=meta_data,
+                sid='lab'
                 )
 
 # meta_data['antenna_list'] = [0, 2]
