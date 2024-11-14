@@ -88,7 +88,22 @@ void write_spectrum_csv(char *filename, fftw_complex *spectrum, double *freq_vec
  * @retval None
  */
 void write_spectrum_mag_csv(char *filename, double *spectrum, double *freq_vector, int num_samples) {
-    FILE *file = fopen(filename, "w");
+    // Timestamp Variables
+    time_t raw_time;
+    struct tm *time_info;
+    int buffer_size = 100;
+    char timestamp[buffer_size];
+    char name[buffer_size]; 
+
+    // Generate timestamp
+    time(&raw_time);
+    time_info = localtime(&raw_time);
+    strftime(timestamp, buffer_size, "%Y.%m.%d_%H:%M:%S", time_info);
+    snprintf(name, sizeof(name), filename, timestamp);
+
+    printf("!!!!!!!!!! %s\n", timestamp);
+
+    FILE *file = fopen(name, "w");
     if (file == NULL) {
         perror("Error opening file for writing");
         exit(EXIT_FAILURE);

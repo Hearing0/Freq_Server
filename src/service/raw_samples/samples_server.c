@@ -23,6 +23,8 @@
 // Default Length of Variables (some dynamically change during runtime)
 #define SAMPLES_NUM     2500 //20000
 #define ANTENNA_NUM     16
+#define SAMPLE_TIME     3                   // Time per Sample (in seconds)
+#define STORAGE_TIME    60                  // Total time per Sample Storage Batch (in seconds)
 #define META_ELEM       3                   // 4 = 5 - 1 (fcenter has unique obj)
 #define RESTRICT_NUM    15 //16             // Number of restricted freq bands in the restrict.dat.inst
 #ifndef CLR_BANDS_MAX
@@ -524,6 +526,29 @@ int main() {
     }
     add_fftw_ptr(temp_samples);
 
+    fftw_complex ***samples_storage = NULL;
+    samples_storage = (fftw_complex ***)fftw_malloc( (STORAGE_TIME / SAMPLE_TIME) * sizeof(fftw_complex **));
+    if (samples_storage == NULL) {
+        perror("Error allocating memory for samples_storage pointers");
+        exit(EXIT_FAILURE);
+    }
+    for (int i = 0; i < (STORAGE_TIME / SAMPLE_TIME); i++) {
+        samples_storage[i] = (fftw_complex **)fftw_malloc( ANTENNA_NUM * sizeof(fftw_complex *));
+        if (samples_storage[i] == NULL) {
+            perror("Error allocating memory for samples_storage's antenna pointers");
+            exit(EXIT_FAILURE);
+        }
+        for (int j = 0; j < ANTENNA_NUM; j++) {
+            samples_storage[i][j] = (fftw_complex *)fftw_malloc(SAMPLES_NUM * sizeof(fftw_complex));
+            if (samples_storage[i][j] == NULL) {
+                perror("Error allocating memory for samples_storage elements");
+                exit(EXIT_FAILURE);
+            }
+        }
+    }
+    add_fftw_ptr(samples_storage);
+    int samples_storage_i = 0;
+
     int restricted_num = RESTRICT_NUM;      // Number of Restricted Freqs at runtime varies depending on site
     freq_band *restricted_freq = NULL;
     restricted_freq = (freq_band *)malloc(restricted_num * sizeof(freq_band));
@@ -680,9 +705,7 @@ int main() {
             /// Read Restricted Frequency (by grabbing site ID then reading its restricted freq file)
             printf("[Frequency Server] Site ID reading...\n");
             read_site_id_data(new_site_id, site_id_obj.shm_ptr, SITE_ID_ELEM);
-            
-            printf("    site_vs_new_site_id: .%s.\n", new_site_id);//(site_id != new_site_id) ? "True" : "False");
-
+    
             // If first client, proceed to read in Restrict File
             if (site_id != new_site_id) {
                 site_id = new_site_id;
@@ -705,7 +728,7 @@ int main() {
 
             sem_post(sl_init.sem);
             printf("[Frequency Server] Initialization data read; processing...\n");
-            // storeInRadarTable(restrict_freq, meta_data)
+            // TODO: storeInRadarTable(restrict_freq, meta_data)
             printf("[Frequency Server] Initialization data processed...\n");
         }
 
@@ -750,15 +773,27 @@ int main() {
 
             sem_post(sl_samples.sem);
 
-            // store sample data for debugging
-            // debug function here
+            // Store Sample Data
+            if (samples_storage_i < (STORAGE_TIME / SAMPLE_TIME)) {
+                samples_storage[samples_storage_i] = temp_samples;
+                samples_storage_i++;
+            }
+            else {
+                // Process Samples Storage per time Packets ...
+                for (int i = 0; i < (STORAGE_TIME / SAMPLE_TIME); i++) {
+                    // Beamform and FFT in all directions
 
-            // printf("\n[Frequency Server] =--- Clear Freq Variables ---=\n");
-            // printf("sample_sep: %f\n", *(double*) sample_sep_obj.shm_ptr);
-            // printf("clr_range: %d -- %d\n", *(int*)clr_range_obj.shm_ptr, *(int*)(clr_range_obj.shm_ptr) );
-            // printf("fcenter: %d\n", *(int*) fcenter_obj.shm_ptr);
-            // printf("beam_num: %d\n", *(int*) beam_num_obj.shm_ptr);
-            // printf("restricted[0]: %d -- %d\n", *(int*) restrict_obj.shm_ptr, *(int*)(restrict_obj.shm_ptr + 1));
+                    // Store in temp bin
+                }
+
+                // Spectral Avg (all packets into 1 and X # of samples by Avg Aatio) and Find Clear Freqs
+
+
+                // 
+                
+
+                samples_storage_i = 0;
+            }
 
             // Process Clear Freq
             printf("[Frequency Server] Starting Clear Freq Search...\n");

@@ -33,6 +33,7 @@
 // TODO: Add flag to record spectrum over time
 
 #include "../utils/misc_read_writes.c" // Pulls Debug Testing Data
+#include "clear_freq_search.h"
 
 // TODO: Pass in clr_freq_range via restrict actual file
 // #define RESTRICT_FILE = '/home/radar/repos/SuperDARN_MSI_ROS/linux/home/radar/ros.3.6/tables/superdarn/site/site.sps/restrict.dat.inst'
@@ -99,20 +100,20 @@ double complex rad_to_rect(double phase) {
 }
 
 /**
- * @brief  Fast Fourier Transform (FFT) conversion from Time four_spectrums  
+ * @brief  Fast Fourier Transform (FFT) conversion from Time fft_spectrum  
  * * into Frequency spectrum.
  * @note    By DF
- * @param  *four_spectrums: Array of four_spectrums that have already been 
+ * @param  *fft_spectrum: Array of fft_spectrum that have already been 
  * * prepared for FFT
- * @param  number_of_samples: Number of four_spectrums
+ * @param  number_of_samples: Number of fft_spectrum
  * @param  *spectrum: Output array for the resultant spectrum
  * @retval None
  * 
  * @deprecated At the time of writing, each component of the function is used 
  * * separately for fft averaging
  */
-void fft_samples(fftw_complex *four_spectrums, int num_samples, fftw_complex *spectrum) {
-    fftw_plan plan = fftw_plan_dft_1d(num_samples, four_spectrums, spectrum, FFTW_FORWARD, FFTW_ESTIMATE);
+void fft_samples(fftw_complex *fft_spectrum, int num_samples, fftw_complex *spectrum) {
+    fftw_plan plan = fftw_plan_dft_1d(num_samples, fft_spectrum, spectrum, FFTW_FORWARD, FFTW_ESTIMATE);
     fftw_execute(plan);
     fftw_destroy_plan(plan);
 }
@@ -371,10 +372,10 @@ void find_clear_freqs(double *spectrum, sample_meta_data meta_data, double delta
 
 // HACK apply efficient matrix multi via cblas_dgemm
 void calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_meta_data *meta_data, freq_band *restricted_bands, int restricted_num, int *clear_freq_range, double beam_angle, double smsep, freq_band *clr_bands) {
-    char *spectrum_file = "../Freq_Server/utils/csv_dump/spectrum_output.csv";
-    char *clr_freq_file = "../Freq_Server/utils/csv_dump/clr_freq_output.csv";
-    char *sample_re_file = "../Freq_Server/utils/csv_dump/samples/sample_re_output.csv";
-    char *sample_im_file = "../Freq_Server/utils/csv_dump/samples/sample_im_output.csv";
+    char *spectrum_file = "../Freq_Server/utils/csv_dump/fft_spectrum/fft_spectrum.%s.csv";
+    char *clr_freq_file = "../Freq_Server/utils/csv_dump/clr_freq.csv";
+    char *sample_re_file = "../Freq_Server/utils/csv_dump/samples/sample_re.csv";
+    char *sample_im_file = "../Freq_Server/utils/csv_dump/samples/sample_im.csv";
     int **sample_re = NULL;
     int **sample_im = NULL;
     
@@ -403,55 +404,7 @@ void calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_meta_data
         exit(EXIT_FAILURE);
     }
 
-    // Calculate and Apply phasing vector
-    float phase_increment = calc_phase_increment(beam_angle, (clear_freq_range[0] + clear_freq_range[1]) / 2, meta_data->x_spacing);
-    if (VERBOSE) printf("phase_increment: %lf\n", phase_increment);
-    // phase_increment = .000738
-    
-    for (int i = 0; i < meta_data->num_antennas; i++) {
-        if (i <= IDX_LAST_MA) {
-            if (i < meta_data->num_antennas) {
-                // printf("antenna[%d]: %d\n", i, antennas[i]);
-                phasing_vector[i] = rad_to_rect(antennas[i] * phase_increment);
-                // printf("phase_vector[%d]: %f + %fi\n", i, creal(phasing_vector[i]), cimag(phasing_vector[i]));
-            } else {
-                fprintf(stderr, "Error: Accessing antennas out of bounds at index %d\n", i);
-                exit(EXIT_FAILURE);
-            }
-        }
-    }
-    if (VERBOSE) {
-        printf("antenna[1]: %d\n", antennas[1]);
-        printf("phasing_vector[1]: %f + %fi\n", creal(phasing_vector[1]), cimag(phasing_vector[1]));
-    }
-
-    // Apply beamforming
-    for (int i = 0; i < num_samples; i++) {
-        double real_sum = 0.0;
-        double imag_sum = 0.0;
-        
-        for (int aidx = 0; aidx < meta_data->num_antennas; aidx++) {
-            double real_sample = creal(raw_samples[aidx][i]);       
-            double imag_sample = cimag(raw_samples[aidx][i]);
-            double real_phase = creal(phasing_vector[aidx]);
-            double imag_phase = cimag(phasing_vector[aidx]);
-            if (VERBOSE && i < 4) printf("sample[%d][%d]\n", aidx, i);
-            if (VERBOSE && i == 2499) {
-                printf("sample[%d][2499]    = %f + %fi\n", aidx, real_sample, imag_sample);
-                printf("phase[%d]           = %f + %fi\n", aidx, real_phase, imag_phase);
-            }
-
-            real_sum += real_sample * real_phase - imag_sample * imag_phase;
-            imag_sum += real_sample * imag_phase + imag_sample * real_phase;
-            // printf("beamformed_samples[%d]: %f + %fi\n", i, creal(beamformed_samples[i]), cimag(beamformed_samples[i]));
-
-            // Store for debugging
-            sample_im[aidx][i] = cimag(raw_samples[aidx][i]);
-            sample_re[aidx][i] = creal(raw_samples[aidx][i]);
-        }
-        beamformed_samples[i] = real_sum + I * imag_sum;
-    }
-    if (VERBOSE) printf("beamformed[625]    = %f + %fi\n", creal(beamformed_samples[625]), cimag(beamformed_samples[625]));
+    phasing_and_beamforming(beam_angle, clear_freq_range, meta_data, phasing_vector, antennas, num_samples, raw_samples, sample_im, sample_re, beamformed_samples);
 
     // Frequency Vector Calculation
     double delta_f = meta_data->usrp_rf_rate / num_samples;
@@ -464,7 +417,6 @@ void calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_meta_data
     // Spectrum Averging (avg of 4 fft)
     // if (SPECTRAL_AVGING) {
     printf("=----Starting Spectral Average----=\n");
-    clock_t t_avg_curr, t_avg;
     int avg_freq_ratio = 4;     //(int) delta_f / CLRFREQ_RES;
     int num_avg_samples = num_samples / avg_freq_ratio; 
 
@@ -477,30 +429,31 @@ void calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_meta_data
     printf("[SpectAvg] done with avg freq vector\n");
 
     double *avg_spectrum = (double*) fftw_malloc(sizeof(double) * num_avg_samples);
-    fftw_complex *four_spectrums = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * num_samples);
+    fftw_complex *fft_spectrum = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * num_samples);
     if (VERBOSE) printf("num_avg_sample: %d\navg_freq_ratio: %d\n", num_avg_samples, avg_freq_ratio);
     
+  
+    clock_t t_avg_curr, t_avg;
     t_avg_curr = clock();
-    // for (int j = 0; j < num_samples; j++) {
-    //     four_spectrums[j] = beamformed_samples[j];
-    // }
-    
+
     // FFT Beamformed Samples
     // TODO: Optimize plan usage; Long-term plan storage (create and store in samples_server.c)
-    fftw_plan plan = fftw_plan_dft_1d(num_samples, beamformed_samples, four_spectrums, FFTW_FORWARD, FFTW_ESTIMATE);
+    fftw_plan plan = fftw_plan_dft_1d(num_samples, beamformed_samples, fft_spectrum, FFTW_FORWARD, FFTW_ESTIMATE);
     fftw_execute(plan);    
 
-    // For every avg element, ...
+    // Spectral Averaging 
+    // (0, 1, 2, 3 -> avg[0]), ..., (n-4, n-3, n-2, n-1 -> avg[n/4])
+    // For every averaged element, ...
     for (int k = 0; k < num_avg_samples; k++) {
-        // Avg the magnitude of four sequential spectrum samples 
+        // Avg the magnitude of four spectrum samples in a row 
         for (int j = 0; j < avg_freq_ratio; j++) {
-            double re = creal(four_spectrums[k * avg_freq_ratio + j]) * creal(four_spectrums[k * avg_freq_ratio + j]);
-            double im = cimag(four_spectrums[k * avg_freq_ratio + j]) * cimag(four_spectrums[k * avg_freq_ratio + j]);
+            double re = creal(fft_spectrum[k * avg_freq_ratio + j]) * creal(fft_spectrum[k * avg_freq_ratio + j]);
+            double im = cimag(fft_spectrum[k * avg_freq_ratio + j]) * cimag(fft_spectrum[k * avg_freq_ratio + j]);
             if (j == 1) avg_spectrum[k] = sqrt(re + im);
             else avg_spectrum[k] += sqrt(re + im);
 
             // if (k == 9) {
-            //     printf("sample[%d][%d][%d]: %f + j%f\n", k, j, k + j, creal(four_spectrums[k + j]), cimag(four_spectrums[k + j]));
+            //     printf("sample[%d][%d][%d]: %f + j%f\n", k, j, k + j, creal(fft_spectrum[k + j]), cimag(fft_spectrum[k + j]));
             // }
         }
         avg_spectrum[k] /= avg_freq_ratio;
@@ -509,48 +462,12 @@ void calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_meta_data
     }
     t_avg = clock() - t_avg_curr;
     if (VERBOSE) printf("====> Spectral Avg took (s): %lf\n", ((double) (t_avg)) / (CLOCKS_PER_SEC));
-
     if (VERBOSE) printf("avg_spectrum[0]: %f\n", avg_spectrum[0]);
 
 
-    // Debug: Store 4 time-domain samples (in magnitude) and Not Averaged Freq Spectrum (complex to magnitude)
-    // if (VERBOSE) {
-    //     write_spectrum_csv("../Freq_Server/utils/csv_dump/spectrum_output.NoAvg.csv", four_spectrums, freq_vector, num_samples);
-    //     double sample_set[num_avg_samples];
-    //     int i_set = 0;  
-    //     for (int i = 0; i < num_avg_samples; i++) {
-    //         double re = creal(four_spectrums[i + i_set]) * creal(four_spectrums[i + i_set]);
-    //         double im = cimag(four_spectrums[i + i_set]) * cimag(four_spectrums[i + i_set]);
-    //         sample_set[i] = sqrt(re + im);
-    //     }
-    //     write_spectrum_mag_csv("../Freq_Server/utils/csv_dump/avg_spect.0.csv", sample_set, freq_vector_avg, num_avg_samples);
-    //     i_set+= num_avg_samples;
-    //     for (int i = 0; i < num_avg_samples; i++) {
-    //         double re = creal(four_spectrums[i + i_set]) * creal(four_spectrums[i + i_set]);
-    //         double im = cimag(four_spectrums[i + i_set]) * cimag(four_spectrums[i + i_set]);
-    //         sample_set[i] = sqrt(re + im);
-    //     }
-    //     write_spectrum_mag_csv("../Freq_Server/utils/csv_dump/avg_spect.1.csv", sample_set, freq_vector_avg, num_avg_samples);
-    //     i_set+= num_avg_samples;
-    //     for (int i = 0; i < num_avg_samples; i++) {
-    //         double re = creal(four_spectrums[i + i_set]) * creal(four_spectrums[i + i_set]);
-    //         double im = cimag(four_spectrums[i + i_set]) * cimag(four_spectrums[i + i_set]);
-    //         sample_set[i] = sqrt(re + im);
-    //     }
-    //     write_spectrum_mag_csv("../Freq_Server/utils/csv_dump/avg_spect.2.csv", sample_set, freq_vector_avg, num_avg_samples);
-    //     i_set+= num_avg_samples;
-    //     for (int i = 0; i < num_avg_samples; i++) {
-    //         double re = creal(four_spectrums[i + i_set]) * creal(four_spectrums[i + i_set]);
-    //         double im = cimag(four_spectrums[i + i_set]) * cimag(four_spectrums[i + i_set]);
-    //         sample_set[i] = sqrt(re + im);
-    //     }
-    //     write_spectrum_mag_csv("../Freq_Server/utils/csv_dump/avg_spect.3.csv", sample_set, freq_vector_avg, num_avg_samples);
-    // }
-    
-
     // Dispose of temp variables
     fftw_destroy_plan(plan);
-    fftw_free(four_spectrums);
+    fftw_free(fft_spectrum);
 
     /// END of Spectrum Calculations
     
@@ -602,7 +519,58 @@ void calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_meta_data
     free(freq_vector);
 }
 
-// XXX: Add a initialization???
+void phasing_and_beamforming(double beam_angle, int *clear_freq_range, sample_meta_data *meta_data, fftw_complex *phasing_vector, int *antennas, int num_samples, fftw_complex **raw_samples, int **sample_im, int **sample_re, fftw_complex *beamformed_samples)
+{
+    // Calculate and Apply phasing vector
+    float phase_increment = calc_phase_increment(beam_angle, (clear_freq_range[0] + clear_freq_range[1]) / 2, meta_data->x_spacing);
+    if (VERBOSE)
+        printf("phase_increment: %lf\n", phase_increment);
+
+    for (int i = 0; i < meta_data->num_antennas; i++) {
+        if (i <= IDX_LAST_MA) {
+            if (i < meta_data->num_antennas) {
+                phasing_vector[i] = rad_to_rect(antennas[i] * phase_increment);
+            } else {
+                fprintf(stderr, "Error: Accessing antennas out of bounds at index %d\n", i);
+                exit(EXIT_FAILURE);
+            }
+        }
+    }
+    if (VERBOSE) {
+        printf("antenna[1]: %d\n", antennas[1]);
+        printf("phasing_vector[1]: %f + %fi\n", creal(phasing_vector[1]), cimag(phasing_vector[1]));
+    }
+
+    // Apply beamforming
+    for (int i = 0; i < num_samples; i++) {
+        double real_sum = 0.0;
+        double imag_sum = 0.0;
+
+        for (int aidx = 0; aidx < meta_data->num_antennas; aidx++) {
+            double real_sample = creal(raw_samples[aidx][i]);
+            double imag_sample = cimag(raw_samples[aidx][i]);
+            double real_phase = creal(phasing_vector[aidx]);
+            double imag_phase = cimag(phasing_vector[aidx]);
+            if (VERBOSE && i < 4)
+                printf("sample[%d][%d]\n", aidx, i);
+            if (VERBOSE && i == 2499) {
+                printf("sample[%d][2499]    = %f + %fi\n", aidx, real_sample, imag_sample);
+                printf("phase[%d]           = %f + %fi\n", aidx, real_phase, imag_phase);
+            }
+
+            real_sum += real_sample * real_phase - imag_sample * imag_phase;
+            imag_sum += real_sample * imag_phase + imag_sample * real_phase;
+
+            // Store for debugging
+            sample_im[aidx][i] = cimag(raw_samples[aidx][i]);
+            sample_re[aidx][i] = creal(raw_samples[aidx][i]);
+        }
+        beamformed_samples[i] = real_sum + I * imag_sum;
+    }
+    if (VERBOSE)
+        printf("beamformed[625]    = %f + %fi\n", creal(beamformed_samples[625]), cimag(beamformed_samples[625]));
+
+} // XXX: Add a initialization???
 
 clear_freq clear_freq_search(
         fftw_complex **raw_samples, 
