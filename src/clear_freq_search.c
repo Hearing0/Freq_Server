@@ -1,18 +1,14 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <math.h>
 #include <complex.h>
 #include <fftw3.h>      // FFT transform library
-// #include <cblas.h>      // Matrix Multi library
-// #include <utils/phasing_utils.c>
 #include <string.h>
 #include <time.h>
-
-
-#ifndef CLK_TCK
-#define CLK_TCK 60
-#endif
+#include "../utils/misc_read_writes.c" 
+#include "clear_freq_search.h"
 
 
 // Define Constants
@@ -23,17 +19,20 @@
 #define CLR_BANDS_MAX 6
 #define CLRFREQ_RES 2e3          
 #define GB_MULT 1.5         // Guard Band Multiplier (Transmission bandwidth * GB_MULT = clear_bw)
+#ifndef CLK_TCK
+#define CLK_TCK 60
+#endif
 
 
-// Debug Flags
+// Config and Debug Flags
 #define VERBOSE 0
 #define SPECTRAL_AVGING 1
 #define TEST_SAMPLES 0
 #define TEST_CLR_RANGE 1
-// TODO: Add flag to record spectrum over time
 
-#include "../utils/misc_read_writes.c" // Pulls Debug Testing Data
-#include "clear_freq_search.h"
+// Config Filepaths
+#define SPECTRAL_LOG_FILE "save_spectra"
+
 
 // TODO: Pass in clr_freq_range via restrict actual file
 // #define RESTRICT_FILE = '/home/radar/repos/SuperDARN_MSI_ROS/linux/home/radar/ros.3.6/tables/superdarn/site/site.sps/restrict.dat.inst'
@@ -505,11 +504,14 @@ void calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_meta_data
     // }      
     
 
-    // Debug: Save data to csv
-    // write_sample_mag_csv(sample_im_file, sample_im, freq_vector, meta_data);         // Used to check complex Samples after Beamforming; ...
-    // write_sample_mag_csv(sample_re_file, sample_re, freq_vector, meta_data);         //     Plot w/ sample_plot.py
-    write_spectrum_mag_csv(spectrum_file, avg_spectrum, freq_vector_avg, num_avg_samples);  // Spectrum after Spectrum FFT averaging; plot w/ spectrum_plot.py
-    write_clr_freq_csv(clr_freq_file, clr_bands);                                       // Used to plot Clear Freq Bands w/ spectrum_plot.clr_freq.py
+    // Save data to csv
+    if (access(SPECTRAL_LOG_FILE, F_OK) == 0) {
+        printf("\'save_spectra\' found. Logging spectra and clear frequencies.\n");
+        // write_sample_mag_csv(sample_im_file, sample_im, freq_vector, meta_data);             // Used to check complex Samples after Beamforming; ...
+        // write_sample_mag_csv(sample_re_file, sample_re, freq_vector, meta_data);             // Plot w/ sample_plot.py
+        write_spectrum_mag_csv(spectrum_file, avg_spectrum, freq_vector_avg, num_avg_samples);  // Spectrum after Spectrum FFT averaging; plot w/ spectrum_plot.py
+        write_clr_freq_csv(clr_freq_file, clr_bands);                                           // Used to plot Clear Freq Bands w/ spectrum_plot.clr_freq.py
+    } else printf("\'save_spectra\' not found. Not logging spectra nor clr_frequency.\n");
 
     printf("Finished Clear Freq Search!\n");
     
