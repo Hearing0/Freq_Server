@@ -12,14 +12,6 @@
 #include <time.h>
 
 
-#ifndef TEST_SAMPLES
-#define TEST_SAMPLES 0
-#endif
-
-#ifndef TEST_CLR_RANGE
-#define TEST_CLR_RANGE 0
-#endif
-
 #ifndef CLR_BANDS_MAX
 #define CLR_BANDS_MAX 6
 #endif
@@ -101,8 +93,6 @@ void write_spectrum_mag_csv(char *filename, double *spectrum, double *freq_vecto
     strftime(timestamp, buffer_size, "%Y.%m.%d_%H:%M:%S", time_info);
     snprintf(name, sizeof(name), filename, timestamp);
 
-    printf("!!!!!!!!!! %s\n", timestamp);
-
     FILE *file = fopen(name, "w");
     if (file == NULL) {
         perror("Error opening file for writing");
@@ -176,7 +166,7 @@ void write_sample_mag_csv(char *filename, int **raw_samples_mag, double *freq_ve
  * @param  ***raw_samples:      14x2500 complex sample array
  * @retval None
  */
-void read_input_data(const char *filename, sample_meta_data *meta_data, double **clear_freq_range, fftw_complex ***raw_samples) {
+void read_input_data(const char *filename, sample_meta_data *meta_data, double **clear_freq_range, fftw_complex ***raw_samples, int TEST_CLR_RANGE, int TEST_SAMPLES) {
     FILE *file = fopen(filename, "r");
     if (file == NULL) {
         perror("Error opening file");
