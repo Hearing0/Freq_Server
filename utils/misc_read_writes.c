@@ -91,7 +91,7 @@ void write_spectrum_mag_csv(char *filename, double *spectrum, double *freq_vecto
     time(&raw_time);
     time_info = localtime(&raw_time);
     strftime(timestamp, buffer_size, "%Y.%m.%d_%H:%M:%S", time_info);
-    snprintf(name, sizeof(name), filename, timestamp);
+    snprintf(name, sizeof(name), filename, timestamp, "csv");
 
     FILE *file = fopen(name, "w");
     if (file == NULL) {
@@ -106,8 +106,50 @@ void write_spectrum_mag_csv(char *filename, double *spectrum, double *freq_vecto
     fclose(file);
 }
 
+void write_spectrum_mag_bin(char *filename, double *spectrum, double *freq_vector, int num_samples) {
+    // Timestamp Variables
+    time_t raw_time;
+    struct tm *time_info;
+    int buffer_size = 100;
+    char timestamp[buffer_size];
+    char name[buffer_size]; 
+
+    // Generate timestamp
+    time(&raw_time);
+    time_info = localtime(&raw_time);
+    strftime(timestamp, buffer_size, "%Y.%m.%d_%H:%M:%S", time_info);
+    snprintf(name, sizeof(name), filename, timestamp, "bin");
+
+    FILE *file = fopen(name, "wb");
+    if (file == NULL) {
+        perror("Error opening file for writing");
+        exit(EXIT_FAILURE);
+    }
+
+    fwrite(&num_samples, sizeof(num_samples), 1, file);
+    fwrite(freq_vector, sizeof(freq_vector), 1, file);
+    fwrite(spectrum, sizeof(spectrum), 1, file);
+
+    printf("Bytes of spectrum_mag: %ld, %ld, %ld\n", sizeof(num_samples), sizeof(freq_vector), sizeof(spectrum));
+
+    fclose(file);
+}
+
 
 void write_clr_freq_csv(char *filename, freq_band *clr_bands) {
+    // Timestamp Variables
+    time_t raw_time;
+    struct tm *time_info;
+    int buffer_size = 100;
+    char timestamp[buffer_size];
+    char name[buffer_size]; 
+
+    // Generate timestamp
+    time(&raw_time);
+    time_info = localtime(&raw_time);
+    strftime(timestamp, buffer_size, "%Y.%m.%d_%H:%M:%S", time_info);
+    snprintf(name, sizeof(name), filename, timestamp, "csv");
+    
     FILE *file = fopen(filename, "w");
     if (file == NULL) {
         perror("Error opening file for writing");
@@ -128,6 +170,41 @@ void write_clr_freq_csv(char *filename, freq_band *clr_bands) {
         if (i == 0) fprintf(file, "%d,%d,%f,%d,%d\n", clr_bands[i].f_start, clr_bands[i].f_end, clr_bands[i].noise,clr_start,clr_end);
         else fprintf(file, "%d,%d,%f\n", clr_bands[i].f_start, clr_bands[i].f_end, clr_bands[i].noise);
     }
+
+    fclose(file);
+}
+
+void write_clr_freq_bin(char *filename, freq_band *clr_bands) {
+    // Timestamp Variables
+    time_t raw_time;
+    struct tm *time_info;
+    int buffer_size = 100;
+    char timestamp[buffer_size];
+    char name[buffer_size]; 
+
+    // Generate timestamp
+    time(&raw_time);
+    time_info = localtime(&raw_time);
+    strftime(timestamp, buffer_size, "%Y.%m.%d_%H:%M:%S", time_info);
+    snprintf(name, sizeof(name), filename, timestamp, "bin");
+
+    FILE *file = fopen(name, "wb");
+    if (file == NULL) {
+        perror("Error opening file for writing");
+        exit(EXIT_FAILURE);
+    }
+
+    // Find Start and End of Clear Freq Range to Write later
+    int clr_start = RAND_MAX;
+    int clr_end = 0;
+    for (int i = 0; i < CLR_BANDS_MAX; i++) {
+        if (clr_bands[i].f_start < clr_start && clr_bands[i].noise < RAND_MAX) clr_start = clr_bands[i].f_start;
+        if (clr_bands[i].f_end > clr_end && clr_bands[i].noise < RAND_MAX) clr_end = clr_bands[i].f_end;
+    }    
+
+    fwrite(&clr_start, sizeof(clr_start), 1, file);
+    fwrite(&clr_end, sizeof(clr_end), 1, file);
+    fwrite(clr_bands, sizeof(clr_bands), 1, file);
 
     fclose(file);
 }
@@ -153,6 +230,36 @@ void write_sample_mag_csv(char *filename, int **raw_samples_mag, double *freq_ve
             fprintf(file, "%f,%d\n", freq_vector[i], raw_samples_mag[j][i]);
         }
     }
+    fclose(file);
+}
+
+void read_spectrum_mag_bin(char *filename, double *spectrum, double *freq_vector) {
+    int num_samples = 0;
+    
+    FILE *file = fopen(filename, "rb");
+    if (file == NULL) {
+        perror("Error opening file for reading");
+        exit(EXIT_FAILURE);
+    }
+
+    fread(&num_samples, sizeof(num_samples), 1, file);
+    fread(spectrum, sizeof(spectrum), 1, file);
+    fread(freq_vector, sizeof(freq_vector), 1, file);
+
+    fclose(file);
+}
+
+void read_clr_freq_bin(char *filename, freq_band *clr_bands, int *clr_start, int *clr_end) {
+    FILE *file = fopen(filename, "rb");
+    if (file == NULL) {
+        perror("Error opening file for reading");
+        exit(EXIT_FAILURE);
+    }
+
+    fread(&clr_start, sizeof(clr_start), 1, file);
+    fread(&clr_end, sizeof(clr_start), 1, file);
+    fread(clr_bands, sizeof(clr_bands), 1, file);
+
     fclose(file);
 }
 
@@ -276,29 +383,37 @@ void read_restrict(char *filepath, freq_band *restricted_freq, int *restricted_n
     int i = 0;
 
     while (fgets(line, sizeof(line), file)) {
-        // printf("\nReading: %s", line);
         sscanf(line, "%d %d", &r1, &r2);
-        // printf("Read: %d -- %d\n", r1, r2);
 
+        // Skip non-frequency band lines
         if (r1 == 0 || r2 == 0) continue;
         else {
             // printf("Storing r1 & r2...\n");
 
             // Reallocate Mem if exceeded
             if (*restricted_num < i) {
-                restricted_freq = (freq_band *) malloc(i * sizeof(freq_band));
+                i++;
+                restricted_freq = realloc(restricted_freq, (*restricted_num * 2) * sizeof(freq_band));
                 *restricted_num = i;
                 if (restricted_freq == NULL) {
                     perror("Error allocating memory for restricted_freq");
                     exit(EXIT_FAILURE);
                 }
-            }
+            } else i++;
 
+            // Store freq band
             restricted_freq[i].f_start  = r1 * 1000;
             restricted_freq[i].f_end    = r2 * 1000; 
             // printf("Restricted[%d]: %d -- %d\n", i, restricted_freq[i].f_start, restricted_freq[i].f_end);
-            i++;
         }
+    }
+
+    // Trim excess memory 
+    restricted_freq = realloc(restricted_freq, (i) * sizeof(freq_band));
+    *restricted_num = i;
+    if (restricted_freq == NULL) {
+        perror("Error allocating memory for restricted_freq");
+        exit(EXIT_FAILURE);
     }
     
     fclose(file);

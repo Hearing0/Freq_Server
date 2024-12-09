@@ -23,9 +23,9 @@ class ClearFrequencyService():
     DOUBLE_SIZE = 8
     
     # Shared Memory Object and Semaphores Constants
-    SAMPLES_NUM  = 2500 #20000
+    SAMPLES_NUM  = 2500
     ANTENNA_NUM = 16
-    RESTRICT_NUM = 15
+    RESTRICT_NUM = 20
     META_ELEM    = 3                                    # 3 = 4 - 1 (fcenter has unique obj)
     CLR_BAND_MAX = 6
     
