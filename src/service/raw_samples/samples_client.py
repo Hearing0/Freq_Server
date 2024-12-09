@@ -612,12 +612,6 @@ class ClearFrequencyService():
             active_clients = self.decrement_active_clients()
             print(f"[clearFrequencyService] Active clients count after decrement: {active_clients}")
 
-            # for obj in self.shm_objects: 
-            #     os.close(obj['shm_fd'])
-            # os.close(self.active_clients_fd)
-            # for sem in self.semaphores:
-            #     sem['sem'].close()
-            
             if active_clients == 0:
                 self.cleanup_shm()
     

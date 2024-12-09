@@ -706,7 +706,7 @@ int main() {
             printf("[Frequency Server] Site ID reading...\n");
             read_site_id_data(new_site_id, site_id_obj.shm_ptr, SITE_ID_ELEM);
     
-            // If first client, proceed to read in Restrict File
+            // If first client or new site_id, proceed to read in site_id and Restrict File
             if (site_id != new_site_id) {
                 site_id = new_site_id;
                 // Get site specific restrict file
