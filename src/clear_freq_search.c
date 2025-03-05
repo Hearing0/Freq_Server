@@ -277,7 +277,7 @@ void find_clear_freqs(double *spectrum, sample_meta_data meta_data, double delta
     for (int i = 0; i < CLR_BANDS_MAX; i++) {
         clr_bands[i].f_start = clr_search_sample_start * delta_f - (meta_data.usrp_rf_rate / 2) + meta_data.usrp_fcenter * 1000;
         clr_bands[i].f_end = clr_search_sample_end * delta_f - (meta_data.usrp_rf_rate / 2) + meta_data.usrp_fcenter * 1000;
-        clr_bands[i].noise = 0; // XXX: Logic Flip
+        clr_bands[i].noise = RAND_MAX; // XXX: Logic Flip
     };
     int min_idx[CLR_BANDS_MAX];
     
@@ -295,7 +295,7 @@ void find_clear_freqs(double *spectrum, sample_meta_data meta_data, double delta
         // Compare curr power with min_powers...
         for (int j = CLR_BANDS_MAX - 1; j >= 0 ; j--) {
             // Update Insert Index; maintaining ascending order 
-            if (curr_band.noise > clr_bands[j].noise && curr_band.noise > 0 && curr_band.noise < RAND_MAX) { // XXX: Logic Flip
+            if (curr_band.noise < clr_bands[j].noise && curr_band.noise > 0 && curr_band.noise < RAND_MAX) { // XXX: Logic Flip
                 insert_idx = j;
             }
             // Check for Intersecting Band; get intersecting clr_band index
@@ -307,25 +307,25 @@ void find_clear_freqs(double *spectrum, sample_meta_data meta_data, double delta
             // Continue Intersection Search 
         }
         // printf("    Intersection Search finished...\n");
-        // printf("    intersect_idx: %d\n    insert_idx: %d\n", intersect_idx, insert_idx);
+        printf("    intersect_idx: %d\n    insert_idx: %d\n", intersect_idx, insert_idx);
 
         // Insertion Point was Found...
         if (insert_idx != -1) {
             // Intersection w/ curr_band was also Found...
             if (intersect_idx != -1) {
-                // Special: If Intersect is less noisy, do not place/skip
+                // Special: If Intersect has worse noise, do not place/skip
                 if (insert_idx > intersect_idx) continue;
-                // printf("    Intersecting Insertion found w/...\n");
-                // freq_band inter_band = clr_bands[intersect_idx];
+                printf("    Intersecting Insertion found w/...\n");
+                freq_band inter_band = clr_bands[intersect_idx];
 
-                // printf("        i-band = | %d -- %f -- %d|\n", inter_band.f_start, inter_band.noise, inter_band.f_end);
+                printf("        i-band = | %d -- %f -- %d|\n", inter_band.f_start, inter_band.noise, inter_band.f_end);
 
                 // Special: Shift right till the Intersecting band is overwritten 
                 if (insert_idx < intersect_idx) {
                     // Debug: verify bands shift properly @ sample
-                    // if (i == 10) for (int j = 0; j < CLR_BANDS_MAX; j++) {
-                    //     printf("Clear Freq Band[%d]: | %dMHz -- Noise: %f -- %dMHz |\n", j, clr_bands[j].f_start, clr_bands[j].noise, clr_bands[j].f_end);
-                    // }
+                    if (i == 10) for (int j = 0; j < CLR_BANDS_MAX; j++) {
+                        printf("Clear Freq Band[%d]: | %dMHz -- Noise: %f -- %dMHz |\n", j, clr_bands[j].f_start, clr_bands[j].noise, clr_bands[j].f_end);
+                    }
                     
                     // printf("        shifting clr_bands for intersect...\n");
                     for (int j = intersect_idx - 1; j >= insert_idx; j--) {
@@ -354,9 +354,9 @@ void find_clear_freqs(double *spectrum, sample_meta_data meta_data, double delta
             min_idx[insert_idx] = i;
 
             // Debug: verify shifting @ sample   
-            // if (i == 10) for (int j = 0; j < CLR_BANDS_MAX; j++) {
-            //     printf("Clear Freq Band[%d]: | %dMHz -- Noise: %f -- %dMHz |\n", j, clr_bands[j].f_start, clr_bands[j].noise, clr_bands[j].f_end);
-            // }
+            if (i == 10) for (int j = 0; j < CLR_BANDS_MAX; j++) {
+                printf("Clear Freq Band[%d]: | %dMHz -- Noise: %f -- %dMHz |\n", j, clr_bands[j].f_start, clr_bands[j].noise, clr_bands[j].f_end);
+            }
         }
     }
 
@@ -480,8 +480,8 @@ void calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_meta_data
 
     int clear_sample_start = (int) round((clear_freq_range[0] - f_start) / delta_f);
     int clear_sample_end = (int) round((clear_freq_range[1] - f_start) / delta_f);
-    // printf("clear_range: | %f -- %f |\n", clear_freq_range[0], clear_freq_range[1]);
-    // printf("    samples: | %d -- %d |\n", clear_sample_start, clear_sample_end);
+    printf("clear_range: | %d -- %d |\n", clear_freq_range[0], clear_freq_range[1]);
+    printf("    samples: | %d -- %d |\n", clear_sample_start, clear_sample_end);
     if (VERBOSE) for (int i = clear_sample_start; i < clear_sample_end; i++) {
         if (i < 2 + clear_sample_start || i > clear_sample_end - 3) printf("spectrum_pow[%d]: %f\n", i, avg_spectrum[i]);   
     }
@@ -506,18 +506,19 @@ void calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_meta_data
     
 
     // Save data to csv
-    if (access(SPECTRAL_LOG_FILE, F_OK) == 0) {
-        printf("\'save_spectra\' found. Logging spectra and clear frequencies.\n");
+    if (access(SPECTRAL_LOG_FILE, F_OK) == 0) {        
+        // Write logs if its folder accessable
         if (BIN_OR_CSV_LOG == 0) {
             write_spectrum_mag_bin(SPECTRUM_FILE, avg_spectrum, freq_vector_avg, num_avg_samples);
             write_clr_freq_bin(CLR_FREQ_FILE, clr_bands);                                           // Used to plot Clear Freq Bands w/ spectrum_plot.clr_freq.py
         } else {
-            // write_sample_mag_csv(sample_im_file, sample_im, freq_vector, meta_data);             // Used to check complex Samples after Beamforming; ...
-            // write_sample_mag_csv(sample_re_file, sample_re, freq_vector, meta_data);             // Plot w/ sample_plot.py
+            // write_sample_mag_csv(sample_im_file, sample_im, freq_vector, meta_data);                                                     // Used to check complex Samples after Beamforming; ...
+            // write_sample_mag_csv(sample_re_file, sample_re, freq_vector, meta_data);                                                     // Plot w/ sample_plot.py
             write_spectrum_mag_csv(SPECTRUM_FILE, avg_spectrum, freq_vector_avg, num_avg_samples);  // Spectrum after Spectrum FFT averaging; plot w/ spectrum_plot.py
             write_clr_freq_csv(CLR_FREQ_FILE, clr_bands);
         }
-    } else printf("\'save_spectra\' not found. Not logging spectra nor clr_frequency.\n");
+        printf("[CFS] \'save_spectra\' found; Logged individual FFT Spectrum and Clear Frequency batches.");
+    } else printf("[CFS] \'save_spectra\' not found. Not logging spectra nor clr_frequency.\n");
 
     printf("Finished Clear Freq Search!\n");
     
@@ -577,8 +578,7 @@ void phasing_and_beamforming(double beam_angle, int *clear_freq_range, sample_me
     }
     if (VERBOSE)
         printf("beamformed[625]    = %f + %fi\n", creal(beamformed_samples[625]), cimag(beamformed_samples[625]));
-
-} // XXX: Add a initialization???
+}
 
 clear_freq clear_freq_search(
         fftw_complex **raw_samples, 
@@ -603,19 +603,21 @@ clear_freq clear_freq_search(
     double beam_sep;
     freq_data freq_data;
 
-    // Debug: Define other parameters
+    // Scale parameters to Hz and ms
     // double clear_freq_range[] = { 12 * pow(10,6), 12.5 * pow(10,6) };
     // double beam_angle = 0.08482300164692443;        // in radians
     // double smsep = .0003; // 1 / (2 * 250 * pow(10, 3));      // ~4 ms
     smsep = smsep / 1000000;
-
-    // Load in data for Clear Freq Calculation
-    // read_input_data(input_file_path, &meta_data, &freq_data.clear_freq_range, &raw_samples);
+    if (clear_freq_range[0] < 100000 || clear_freq_range[1] < 100000) {
+        clear_freq_range[0] = clear_freq_range[0] * 1000; 
+        clear_freq_range[1] = clear_freq_range[1] * 1000;
+    }
 
     // Beam Angle Calculation
     read_array_config(config_path, &n_beams, &beam_sep);
     double beam_angle = calc_beam_angle(n_beams, beam_num, beam_sep);  
 
+    // Debug: Display parameters
     printf("\n[Frequency Server] =--- Clear Freq Variables ---=\n");
     printf("num_samples: %d\nnum_antennas: %d\nx_spacing: %lf\nusrp_rf_rate: %d\nusrp_fcenter: %d\n",
         meta_data.number_of_samples,

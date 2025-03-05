@@ -44,6 +44,10 @@ typedef struct clear_freq {
     double tfreq;
 } clear_freq;
 
+void file_access_error(const char *filepath) {
+    printf("[CFS] ERROR: accessing filepath: %s\n", filepath);
+}
+
 
 /**
  * @brief  Writes a complex Frequency Spectrum to csv file to be plotted in python.
@@ -56,10 +60,23 @@ typedef struct clear_freq {
  * @deprecated Replaced by write_spectrum_mag_csv. No longer using complex form to similify calculations
  */
 void write_spectrum_csv(char *filename, fftw_complex *spectrum, double *freq_vector, int num_samples) {
-    FILE *file = fopen(filename, "w");
+    // Timestamp Variables
+    time_t raw_time;
+    struct tm *time_info;
+    int buffer_size = 100;
+    char timestamp[buffer_size];
+    char name[buffer_size]; 
+
+    // Generate timestamp
+    time(&raw_time);
+    time_info = localtime(&raw_time);
+    strftime(timestamp, buffer_size, "%Y.%m.%d_%H:%M:%S", time_info);
+    snprintf(name, sizeof(name), filename, timestamp, "csv");
+
+    FILE *file = fopen(name, "w");
     if (file == NULL) {
-        perror("Error opening file for writing");
-        exit(EXIT_FAILURE);
+        file_access_error(name);
+        return;
     }
     fprintf(file, "Frequency,Power\n");
     for (int i = 0; i < num_samples; i++) {
@@ -95,8 +112,8 @@ void write_spectrum_mag_csv(char *filename, double *spectrum, double *freq_vecto
 
     FILE *file = fopen(name, "w");
     if (file == NULL) {
-        perror("Error opening file for writing");
-        exit(EXIT_FAILURE);
+        file_access_error(name);
+        return;
     }
     fprintf(file, "Frequency,Power\n");
     for (int i = 0; i < num_samples; i++) {
@@ -122,8 +139,8 @@ void write_spectrum_mag_bin(char *filename, double *spectrum, double *freq_vecto
 
     FILE *file = fopen(name, "wb");
     if (file == NULL) {
-        perror("Error opening file for writing");
-        exit(EXIT_FAILURE);
+        file_access_error(name);
+        return;
     }
 
     fwrite(&num_samples, sizeof(num_samples), 1, file);
@@ -152,8 +169,8 @@ void write_clr_freq_csv(char *filename, freq_band *clr_bands) {
     
     FILE *file = fopen(filename, "w");
     if (file == NULL) {
-        perror("Error opening file for writing");
-        exit(EXIT_FAILURE);
+        file_access_error(name);
+        return;
     }
 
     // Find Start and End of Clear Freq Range to Write later
@@ -190,8 +207,8 @@ void write_clr_freq_bin(char *filename, freq_band *clr_bands) {
 
     FILE *file = fopen(name, "wb");
     if (file == NULL) {
-        perror("Error opening file for writing");
-        exit(EXIT_FAILURE);
+        file_access_error(name);
+        return;
     }
 
     // Find Start and End of Clear Freq Range to Write later
@@ -221,9 +238,10 @@ void write_clr_freq_bin(char *filename, freq_band *clr_bands) {
 void write_sample_mag_csv(char *filename, int **raw_samples_mag, double *freq_vector, sample_meta_data *meta_data) {
     FILE *file = fopen(filename, "w");
     if (file == NULL) {
-        perror("Error opening file for writing");
-        exit(EXIT_FAILURE);
+        file_access_error(filename);
+        return;
     }
+
     fprintf(file, "Samples,Power\n");
     for (int j = 0; j < meta_data->num_antennas; j++) {
         for (int i = 0; i < meta_data->number_of_samples; i++) {
@@ -238,8 +256,8 @@ void read_spectrum_mag_bin(char *filename, double *spectrum, double *freq_vector
     
     FILE *file = fopen(filename, "rb");
     if (file == NULL) {
-        perror("Error opening file for reading");
-        exit(EXIT_FAILURE);
+        file_access_error(filename);
+        return;
     }
 
     fread(&num_samples, sizeof(num_samples), 1, file);
@@ -252,8 +270,8 @@ void read_spectrum_mag_bin(char *filename, double *spectrum, double *freq_vector
 void read_clr_freq_bin(char *filename, freq_band *clr_bands, int *clr_start, int *clr_end) {
     FILE *file = fopen(filename, "rb");
     if (file == NULL) {
-        perror("Error opening file for reading");
-        exit(EXIT_FAILURE);
+        file_access_error(filename);
+        return;
     }
 
     fread(&clr_start, sizeof(clr_start), 1, file);
@@ -276,7 +294,7 @@ void read_clr_freq_bin(char *filename, freq_band *clr_bands, int *clr_start, int
 void read_input_data(const char *filename, sample_meta_data *meta_data, double **clear_freq_range, fftw_complex ***raw_samples, int test_clr_range, int test_samples) {
     FILE *file = fopen(filename, "r");
     if (file == NULL) {
-        perror("Error opening file");
+        file_access_error(filename);
         exit(EXIT_FAILURE);
     }
 
@@ -410,7 +428,6 @@ void read_restrict(char *filepath, freq_band *restricted_freq, int *restricted_n
 
     // Trim excess memory 
     restricted_freq = realloc(restricted_freq, (i) * sizeof(freq_band));
-    *restricted_num = i;
     if (restricted_freq == NULL) {
         perror("Error allocating memory for restricted_freq");
         exit(EXIT_FAILURE);

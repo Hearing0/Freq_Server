@@ -14,8 +14,9 @@ class ClearFrequencyService():
     # from dotenv import load_dotenv
     # load_dotenv(".env")
 
-    # Debugging Flags
+    # Program Flags
     CLEAN_ON_INACTIVE   = False           # Cleans all semaphores and shared memory objects when there are no Active Clients
+    soft_kill = False
     
     # Static Constants
     CHAR_SIZE = 1
@@ -49,7 +50,7 @@ class ClearFrequencyService():
     SITE_ID_SHM_SIZE        = (3 * CHAR_SIZE)
 
     
-    RETRY_ATTEMPTS = 5
+    RETRY_ATTEMPTS = 3
     RETRY_DELAY = 2  # seconds
     
     # Shared Memory Object and Semaphores Names
@@ -94,6 +95,8 @@ class ClearFrequencyService():
         self.sid = sid
         
         try:
+            # self.cleanup_shm(True)
+        
             # Shared Memory Object and Semaphores
             self.sf_client  = self.create_semaphore(self.SEM_F_CLIENT)
             self.sf_server  = self.create_semaphore(self.SEM_F_SERVER)
@@ -135,9 +138,11 @@ class ClearFrequencyService():
 
         except ValueError:
             print("[ClearFrequencyService] Initialization Failed. Cleaning up SHM Objects and Semaphores...")
+            self.soft_kill == True
             self.cleanup_shm()
         except KeyboardInterrupt:
             print("[CFS] Keyboard Interupt triggered during Initialization... Canceling and cleaning up...")
+            self.soft_kill == True
             self.cleanup_shm()
             
         
@@ -454,10 +459,9 @@ class ClearFrequencyService():
                 # Return Center Freq and Noise
                 packed_data.append((start_freq + end_freq) / 2)
                 noise_data.append(noise)
-            return packed_data, noise_data
-            
+            return packed_data, noise_data            
                 
-    def sendSamples(self, raw_samples, clr_range=None, fcenter=None, beam_num=None, sample_sep=None, restrict_data=None, meta_data=None):
+    def request_clr_freq(self, raw_samples, clr_range=None, fcenter=None, beam_num=None, sample_sep=None, restrict_data=None, meta_data=None, ):
         """ Waits for client requests, then processes server data, writes client 
             data, and requests server to process new data. When process is 
             terminated, the try/finally block cleans up.
@@ -473,11 +477,10 @@ class ClearFrequencyService():
             self.sid,
         ]
         
-        # Special: Re-initialize ClearFreqService
-        # if self.active_clients_fd == None:
-        #     self.__init__()
-        
-        
+        # Special: Halt all future ClearFreqService
+        if self.soft_kill == True:
+            return
+                
         # Get in Queue
         active_clients = self.increment_active_clients()
         print(f"[clearFrequencyService] Active clients count: {active_clients}\n")
@@ -602,21 +605,29 @@ class ClearFrequencyService():
                 new_clrfreq_data, new_noise_data = self.repack_data(new_clrfreq_data, True)
                 for clr_freq in zip(new_clrfreq_data, new_noise_data):
                     print(f"[clearFrequencyService] Clear Freq Band: | {clr_freq[0]} (Hz), {clr_freq[1]} (N/A) |")
-                    
+                clr_freq, noise = new_clrfreq_data[0]/1000, new_noise_data[0]
+                
                 self.sl_clrfreq['sem'].release()
                         
         except KeyboardInterrupt:
             print("[clearFrequencyService] Keyboard interrupt received. Exiting...")
+        except posix_ipc.ExistentialError or ValueError or AttributeError:
+                print(f"[clearFrequencyService] Shared memory has been delinked. Exiting...")
         finally:
             # Clean up
             active_clients = self.decrement_active_clients()
             print(f"[clearFrequencyService] Active clients count after decrement: {active_clients}")
 
-            if active_clients == 0:
+            if active_clients == 0 or self.soft_kill:
                 self.cleanup_shm()
+                
+        return clr_freq, noise
+
+    def soft_kill(self):
+        self.soft_kill == True
     
-    def cleanup_shm(self, only_active_clients = False):
-        if only_active_clients is True:
+    def cleanup_shm(self):
+        if self.soft_kill is True or self.CLEAN_ON_INACTIVE is True:
             print("[clearFrequencyService] No active clients remaining, but not cleaning up shared resources to keep service idle.")
             try:
                 posix_ipc.unlink_shared_memory(self.ACTIVE_CLIENTS_SHM_NAME)
@@ -707,7 +718,7 @@ trimmed_samples = raw_samples[:1]         #HACK: writes only first two antenna's
 
 print(meta_data['antenna_list'])
 
-CFS.sendSamples(raw_samples, 
+CFS.request_clr_freq(raw_samples, 
                 clr_range=clear_freq_range, 
                 fcenter=12000,
                 beam_num=1,
@@ -717,7 +728,7 @@ CFS.sendSamples(raw_samples,
 
 # meta_data['antenna_list'] = [0, 2]
 
-# CFS.sendSamples(trimmed_samples[:0], 
+# CFS.request_clr_freq(trimmed_samples[:0], 
 #                 clr_range=clear_freq_range, 
 #                 fcenter=12000,
 #                 beam_num=1,
@@ -725,4 +736,4 @@ CFS.sendSamples(raw_samples,
 #                 meta_data=meta_data
 #                 )
 
-# CFS.sendSamples(raw_samples)
+# CFS.request_clr_freq(raw_samples)

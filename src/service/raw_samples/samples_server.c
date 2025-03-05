@@ -465,7 +465,7 @@ void flag_debug() {
 
 
 int main() {
-    // Setup Signal Handler
+    // Setup Signal Handler (catches ctrl+c to quit safely)
     signal(SIGINT, handle_sigint);
 
     // Open Shared Memory Object
@@ -606,6 +606,9 @@ int main() {
         
         printf("[Frequency Server] Awaiting client response...\n");
         sem_wait(sf_server.sem);   
+
+        // Simulate a delay
+        sleep(2);
 
         double t1,t2;
         t1 = clock();
