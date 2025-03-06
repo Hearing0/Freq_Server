@@ -841,5 +841,5 @@ int main() {
         printf("[Frequency Server] Processing Time for Client (s): %lf\n", ((double) (t2 - t1)) / (CLOCKS_PER_SEC));
     }
 
-    cleanup();
+    // cleanup();
 }
