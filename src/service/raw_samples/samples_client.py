@@ -95,7 +95,7 @@ class ClearFrequencyService():
         # Process Site ID during Sample Send 
         self.sid = sid
         
-        try:      
+        try:
             # Shared Memory Object and Semaphores
             self.sf_client  = self.create_semaphore(self.SEM_F_CLIENT)
             self.sf_server  = self.create_semaphore(self.SEM_F_SERVER)
@@ -225,7 +225,7 @@ class ClearFrequencyService():
             try:
                 # Init counter
                 print(f"[clearFrequencyService] Attempting to initialize Active Clients Counter (Attempt {attempts + 1}/{self.RETRY_ATTEMPTS})...")
-                self.active_clients_fd = os.open(f"/dev/shm{self.ACTIVE_CLIENTS_SHM_NAME}", os.O_RDWR | os.O_CREAT, 0o666)
+                self.active_clients_fd = os.open(f"/dev/shm", os.O_RDWR | os.O_TMPFILE, 0o666)
                 os.ftruncate(self.active_clients_fd, struct.calcsize('i'))  # Ensure the size of the shared memory object is large enough for an integer
                 # If abnormal num of clients, set to 0
                 with mmap.mmap(self.active_clients_fd, struct.calcsize('i'), mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE) as m:
@@ -533,20 +533,20 @@ class ClearFrequencyService():
                 self.sl_init['sem'].acquire()
                 print("[clearFrequencyService] Initialization Semaphore Acquired...")
                 
-                # If restrict data present, send & overwrite 
-                if restrict_data is not None:    
-                    print(f"[Frequency Client] Data Write Progress: {self.shm_objects[5]['name']}")
-                    # self.write_m_data(self.shm_objects[5], [(int(x)) for x in restrict_data])
+                # # If restrict data present, send & overwrite 
+                # if restrict_data is not None:    
+                #     print(f"[Frequency Client] Data Write Progress: {self.shm_objects[5]['name']}")
+                #     # self.write_m_data(self.shm_objects[5], [(int(x)) for x in restrict_data])
                     
-                    new_restrict_data = []
-                    # print("[Frequency Client] restrict_arr len: ", len(restrict_data))
-                    for restricted_freq in restrict_data:   
-                        new_restrict_data.append(int(restricted_freq[0]))
-                        new_restrict_data.append(int(restricted_freq[1]))
+                #     new_restrict_data = []
+                #     # print("[Frequency Client] restrict_arr len: ", len(restrict_data))
+                #     for restricted_freq in restrict_data:   
+                #         new_restrict_data.append(int(restricted_freq[0]))
+                #         new_restrict_data.append(int(restricted_freq[1]))
                         
-                    print("[Frequency Client] Writing restricted freq data:\n", restrict_data[:2], "...")
-                    self.shm_objects[5]['shm_ptr'].seek(0)
-                    self.shm_objects[5]['shm_ptr'].write(struct.pack('i' * (self.RESTRICT_NUM * 2), *new_restrict_data))
+                #     print("[Frequency Client] Writing restricted freq data:\n", restrict_data[:2], "...")
+                #     self.shm_objects[5]['shm_ptr'].seek(0)
+                #     self.shm_objects[5]['shm_ptr'].write(struct.pack('i' * (self.RESTRICT_NUM * 2), *new_restrict_data))
                 
                 # If sample separation present, send
                 if sample_sep is not None:                
@@ -643,12 +643,7 @@ class ClearFrequencyService():
         except posix_ipc.ExistentialError or ValueError or AttributeError:
                 print("[clearFrequencyService] Shared memory has been delinked. Exiting...")
         finally:
-            # Clean up
             active_clients = self.decrement_active_clients()
-            # print(f"[clearFrequencyService] Active clients count after decrement: {active_clients}")
-
-            # if active_clients == 0: 
-            #     self.cleanup_shm()
                 
         return clr_freq, noise
     
@@ -732,6 +727,8 @@ raw_samples, meta_data = read_sample_pickle("/home/df/Desktop/PSU-SuperDARN/Freq
 clear_freq_range = [ int(12 * pow(10,6)), int(12.5 * pow(10,6)) ]
 # restrict_data=read_restrict_file(RESTRICT_FILE)
 
+meta_ant_full = meta_data['antenna_list']
+meta_ant_partial = [0,2] 
 trimmed_samples = raw_samples[:1]         #HACK: writes only first two antenna's samples
 
 # CFS.flag_debug(trimmed_samples, 
@@ -742,40 +739,23 @@ trimmed_samples = raw_samples[:1]         #HACK: writes only first two antenna's
 #                 meta_data=meta_data
 #                 )
 
-# print(meta_data['antenna_list'])
+while (True):
+    # meta_data['antenna_list'] = meta_ant_full
+    CFS.request_clr_freq(raw_samples, 
+                    clr_range=clear_freq_range, 
+                    fcenter=12000,
+                    beam_num=1,
+                    sample_sep=340,
+                    meta_data=meta_data,
+                    )
 
-CFS.request_clr_freq(raw_samples, 
-                clr_range=clear_freq_range, 
-                fcenter=12000,
-                beam_num=1,
-                sample_sep=340,
-                meta_data=meta_data,
-                )
-
-CFS.request_clr_freq(raw_samples, 
-                clr_range=clear_freq_range, 
-                fcenter=12000,
-                beam_num=1,
-                sample_sep=340,
-                meta_data=meta_data,
-                )
-
-CFS.request_clr_freq(raw_samples, 
-                clr_range=clear_freq_range, 
-                fcenter=12000,
-                beam_num=1,
-                sample_sep=340,
-                meta_data=meta_data,
-                )
-
-# meta_data['antenna_list'] = [0, 2]
-
-# CFS.request_clr_freq(trimmed_samples[:0], 
-#                 clr_range=clear_freq_range, 
-#                 fcenter=12000,
-#                 beam_num=1,
-#                 sample_sep=340,
-#                 meta_data=meta_data
-#                 )
+    # meta_data['antenna_list'] = meta_ant_partial
+    # CFS.request_clr_freq(trimmed_samples[:0], 
+    #                 clr_range=clear_freq_range, 
+    #                 fcenter=12000,
+    #                 beam_num=1,
+    #                 sample_sep=340,
+    #                 meta_data=meta_data
+    #                 )
 
 # CFS.request_clr_freq(raw_samples)

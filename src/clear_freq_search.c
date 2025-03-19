@@ -116,8 +116,8 @@ double complex rad_to_rect(double phase) {
  * @deprecated At the time of writing, each component of the function is used 
  * * separately for fft averaging
  */
-void fft_samples(fftw_complex *fft_spectrum, int num_samples, fftw_complex *spectrum) {
-    fftw_plan plan = fftw_plan_dft_1d(num_samples, fft_spectrum, spectrum, FFTW_FORWARD, FFTW_ESTIMATE);
+void fft_samples(fftw_complex *fft_spectrum, int samples_num, fftw_complex *spectrum) {
+    fftw_plan plan = fftw_plan_dft_1d(samples_num, fft_spectrum, spectrum, FFTW_FORWARD, FFTW_ESTIMATE);
     fftw_execute(plan);
     fftw_destroy_plan(plan);
 }
@@ -138,6 +138,7 @@ void convolve(double* u, int u_size, int* v, int v_size, double* result) {
         for (int j = 0; j < v_size; j++) {
             result[i] += v[j] * u[i + j]; // result[i + (int) v_size] += ...
         }
+        result[i] /= v_size;
     }
 }
 
@@ -147,17 +148,17 @@ void convolve(double* u, int u_size, int* v, int v_size, double* result) {
  * @param  *spectrum: Spectrum the mask will be applied to.
  * @param  *freq_vector: Used to determine if the mask can be applied and where to start applying the mask element-wise.
  * @param  delta_f: Element step size, used to round the mask start and end bounds
- * @param  num_samples: Number of samples in the spectrum
+ * @param  samples_num: Number of samples in the spectrum
  * @param  *restricted_bands: The restricted frequencies bands that should not
  * *  be transmitted on and should be masked.
  * @param  restricted_num: Number of restricted frequency bands in restricted_bands. 
  * @retval None
  */
-void mask_restricted_freq(double *spectrum, double *freq_vector, int delta_f, int num_samples, freq_band *restricted_bands, int restricted_num) { 
+void mask_restricted_freq(double *spectrum, double *freq_vector, int delta_f, int samples_num, freq_band *restricted_bands, int restricted_num) { 
     printf("    [mask_restricted] Masking restricted bands...\n");
     bool is_applied = false;
 
-    // printf("spect range | %f -- %f |\n",  freq_vector[0], freq_vector[num_samples - 1]);
+    // printf("spect range | %f -- %f |\n",  freq_vector[0], freq_vector[samples_num - 1]);
 
     // Mask each restricted band
     for (int i = 0; i < restricted_num; i++) {
@@ -166,8 +167,8 @@ void mask_restricted_freq(double *spectrum, double *freq_vector, int delta_f, in
         int mask_end = (int) restricted_bands[i].f_end;
 
         // For masks intersecting spectrum's freq range, apply mask
-        if (( mask_end <= freq_vector[num_samples - 1] && mask_end > freq_vector[0] ) ||
-            ( mask_start < freq_vector[num_samples - 1] && mask_start >= freq_vector[0])) {
+        if (( mask_end <= freq_vector[samples_num - 1] && mask_end > freq_vector[0] ) ||
+            ( mask_start < freq_vector[samples_num - 1] && mask_start >= freq_vector[0])) {
                 // Debug: Show masks applied
                 printf("    [MASK] Applying... | %d -- %d|\n", mask_start, mask_end);
 
@@ -176,12 +177,12 @@ void mask_restricted_freq(double *spectrum, double *freq_vector, int delta_f, in
                 if (mask_start < freq_vector[0]) mask_sample_start = 0;
                 else mask_sample_start = (mask_start - freq_vector[0]) / delta_f;
                 
-                if (mask_end >= freq_vector[num_samples - 1]) mask_sample_end = num_samples - 1;
+                if (mask_end >= freq_vector[samples_num - 1]) mask_sample_end = samples_num - 1;
                 else mask_sample_end = (mask_end - freq_vector[0]) / delta_f;
                 // printf("            Sample bounds... | %d -- %d|\n", mask_sample_start, mask_sample_end);
                
                 // Apply mask
-                for (int j = mask_sample_start; j <= mask_sample_end && j <= num_samples; j++) spectrum[j] = RAND_MAX;
+                for (int j = mask_sample_start; j <= mask_sample_end && j <= samples_num; j++) spectrum[j] = RAND_MAX;
 
                 is_applied = true;
         }
@@ -380,7 +381,7 @@ void calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_meta_data
     int **sample_im = NULL;
     
     // Extract meta data
-    int num_samples = meta_data->number_of_samples;
+    int samples_num = meta_data->number_of_samples;
     int *antennas = meta_data->antenna_list;
 
     // Ensure inputs exist
@@ -390,9 +391,9 @@ void calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_meta_data
     }
 
     // Allocate memory for Variables
-    fftw_complex *phasing_vector = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * num_samples);
-    fftw_complex *beamformed_samples = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * num_samples);
-    double *freq_vector = (double*) malloc(sizeof(double) * num_samples);
+    fftw_complex *phasing_vector = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * samples_num);
+    fftw_complex *beamformed_samples = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * samples_num);
+    double *freq_vector = (double*) malloc(sizeof(double) * samples_num);
     sample_im = (int**) malloc(sizeof(int*) * meta_data->num_antennas);
     sample_re = (int**) malloc(sizeof(int*) * meta_data->num_antennas);
     for (int i = 0; i < meta_data->num_antennas; i++) {
@@ -404,12 +405,12 @@ void calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_meta_data
         exit(EXIT_FAILURE);
     }
 
-    phasing_and_beamforming(beam_angle, clear_freq_range, meta_data, phasing_vector, antennas, num_samples, raw_samples, sample_im, sample_re, beamformed_samples);
+    phasing_and_beamforming(beam_angle, clear_freq_range, meta_data, phasing_vector, antennas, samples_num, raw_samples, sample_im, sample_re, beamformed_samples);
 
     // Frequency Vector Calculation
-    double delta_f = meta_data->usrp_rf_rate / num_samples;
+    double delta_f = meta_data->usrp_rf_rate / samples_num;
     double f_start = meta_data->usrp_fcenter * 1000 - (meta_data->usrp_rf_rate / 2);
-    for (int i = 0; i < num_samples; i++) {
+    for (int i = 0; i < samples_num; i++) {
         freq_vector[i] = i * delta_f + f_start;
     }
 
@@ -418,7 +419,7 @@ void calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_meta_data
     // if (SPECTRAL_AVGING) {
     printf("=----Starting Spectral Average----=\n");
     int avg_freq_ratio = 4;     //(int) delta_f / CLRFREQ_RES;
-    int num_avg_samples = num_samples / avg_freq_ratio; 
+    int num_avg_samples = samples_num / avg_freq_ratio; 
 
     // Determine Avg Freq Vector; used in Clear Freq Calculation
     double *freq_vector_avg = (double*) malloc(sizeof(double) * num_avg_samples);
@@ -429,7 +430,7 @@ void calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_meta_data
     printf("[SpectAvg] done with avg freq vector\n");
 
     double *avg_spectrum = (double*) fftw_malloc(sizeof(double) * num_avg_samples);
-    fftw_complex *fft_spectrum = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * num_samples);
+    fftw_complex *fft_spectrum = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * samples_num);
     if (VERBOSE) printf("num_avg_sample: %d\navg_freq_ratio: %d\n", num_avg_samples, avg_freq_ratio);
     
   
@@ -438,7 +439,7 @@ void calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_meta_data
 
     // FFT Beamformed Samples
     // TODO: Optimize plan usage; Long-term plan storage (create and store in samples_server.c)
-    fftw_plan plan = fftw_plan_dft_1d(num_samples, beamformed_samples, fft_spectrum, FFTW_FORWARD, FFTW_ESTIMATE);
+    fftw_plan plan = fftw_plan_dft_1d(samples_num, beamformed_samples, fft_spectrum, FFTW_FORWARD, FFTW_ESTIMATE);
     fftw_execute(plan);    
 
     // Spectral Averaging 
@@ -471,7 +472,7 @@ void calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_meta_data
 
     /// END of Spectrum Calculations
     
-    // if (VERBOSE) printf("delta_f: %f\nnum_samples: %d\nfcenter: %d\n", delta_f, num_samples, meta_data->usrp_fcenter * 1000);
+    // if (VERBOSE) printf("delta_f: %f\nnum_samples: %d\nfcenter: %d\n", delta_f, samples_num, meta_data->usrp_fcenter * 1000);
 
 
     // Mask restricted frequencies
@@ -528,7 +529,7 @@ void calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_meta_data
     free(freq_vector);
 }
 
-void phasing_and_beamforming(double beam_angle, int *clear_freq_range, sample_meta_data *meta_data, fftw_complex *phasing_vector, int *antennas, int num_samples, fftw_complex **raw_samples, int **sample_im, int **sample_re, fftw_complex *beamformed_samples)
+void phasing_and_beamforming(double beam_angle, int *clear_freq_range, sample_meta_data *meta_data, fftw_complex *phasing_vector, int *antennas, int samples_num, fftw_complex **raw_samples, int **sample_im, int **sample_re, fftw_complex *beamformed_samples)
 {
     // Calculate and Apply phasing vector
     float phase_increment = calc_phase_increment(beam_angle, (clear_freq_range[0] + clear_freq_range[1]) / 2, meta_data->x_spacing);
@@ -551,7 +552,7 @@ void phasing_and_beamforming(double beam_angle, int *clear_freq_range, sample_me
     }
 
     // Apply beamforming
-    for (int i = 0; i < num_samples; i++) {
+    for (int i = 0; i < samples_num; i++) {
         double real_sum = 0.0;
         double imag_sum = 0.0;
 
@@ -619,7 +620,7 @@ clear_freq clear_freq_search(
 
     // Debug: Display parameters
     printf("\n[Frequency Server] =--- Clear Freq Variables ---=\n");
-    printf("num_samples: %d\nnum_antennas: %d\nx_spacing: %lf\nusrp_rf_rate: %d\nusrp_fcenter: %d\n",
+    printf("samples_num: %d\nnum_antennas: %d\nx_spacing: %lf\nusrp_rf_rate: %d\nusrp_fcenter: %d\n",
         meta_data.number_of_samples,
         meta_data.num_antennas,
         meta_data.x_spacing,

@@ -166,23 +166,28 @@ void read_restrict_shm(freq_band *restricted_freq, int *restrict_shm_ptr, int *r
     }
 }
 
-void read_sample_shm(fftw_complex **temp_samples, void *samples_shm_ptr, int antenna_num) {
+void read_sample_shm(fftw_complex **temp_samples, void *samples_shm_ptr, int antenna_num, int samples_num) {
     int *s_ptr = (int *) samples_shm_ptr;
     
     // Store sample data into complex form
     for (int i = 0; i < antenna_num; i++)
     {
-        for (int j = 0; j < SAMPLES_NUM; j += 2)
-        {
-            temp_samples[i][j] = s_ptr[i * SAMPLES_NUM + j] + I * s_ptr[i * SAMPLES_NUM + j + 1];
+        for (int j = 0; j < samples_num; j++) {
+            temp_samples[i][j] = s_ptr[i * samples_num + j * 2] + I * s_ptr[i * samples_num + j * 2 + 1];
 
             // Debug: Print 5 complex of each antenna batch
-            // if (j < 10) {
-            //     printf("shm[%d]      =   %d + i%d\n", i * SAMPLES_NUM + j, ((int*) samples_shm_ptr)[i * SAMPLES_NUM + j], ((int*) samples_shm_ptr)[i * SAMPLES_NUM + j + 1]);
-            //     printf("vs\n");
-            //     printf("temp_samples[%d][%d] =  %f + i%f\n\n", i, j, creal(temp_samples[i][j]), cimag(temp_samples[i][j]));
-            // }
+            if (j < 4 || j > samples_num - 4 || j == 2499) {
+                printf("shm[%d]      =   %d + i%d\n", i * samples_num + j, ((int*) samples_shm_ptr)[i * samples_num + j], ((int*) samples_shm_ptr)[i * samples_num + j + 1]);
+                printf("vs\n");
+                printf("temp_samples[%d][%d] =  %f + i%f\n\n", i, j, creal(temp_samples[i][j]), cimag(temp_samples[i][j]));
+            }
         }
+
+
+        // for (int j = 0; j < samples_num; j += 2)
+        // {
+        //     temp_samples[i][j] = s_ptr[i * samples_num + j] + I * s_ptr[i * samples_num + j + 1];
+        // }
     }
 }
 
@@ -342,7 +347,6 @@ void clean_sem(semaphore sem) {
  */
 void cleanup() {
     printf("[Frequency Server] Cleaning all semaphores and SHM objects...\n");
-    printf("                   Except the active client object!!! (done on client-side)\n");
 
     for (int i = 0; i < SEM_NUM; i++) clean_sem(*semaphores[i]);
     printf("[Frequency Server] Cleaned all semaphores ...\n");
@@ -367,7 +371,7 @@ void cleanup() {
  * @param  sig: Caught signal
  * @retval None
  */
-void handle_sigint(int sig) {
+void handle_sig(int sig) {
     printf("\n[Frequency Server] Caught signal %d, cleaning up and exiting...\n", sig);
     cleanup();
 
@@ -375,7 +379,7 @@ void handle_sigint(int sig) {
     printf("[Frequency Server] Main processes and communication terminated.\n"
            "Goodbye.\n");
            
-    exit(0);
+    exit(sig);
 }
 
 void write_clr_log_csv(freq_band **clr_storage, int clr_num) {
@@ -470,8 +474,15 @@ void flag_debug() {
 
 
 int main() {
-    // Setup Signal Handler (catches ctrl+c to quit safely)
-    signal(SIGINT, handle_sigint);
+    // Setup Signal Handler (catches ctrl+c and termination? to quit safely)
+    signal(SIGTERM, handle_sig);
+    signal(SIGINT, handle_sig);
+    signal(SIGSEGV, handle_sig);
+
+
+    printf("[Frequency Server] Pre-Cleaning...\n\n");
+    cleanup();
+    
 
     // Open Shared Memory Object
     printf("[Frequency Server] Initializing Shared Memory Object...\n");
@@ -502,6 +513,13 @@ int main() {
     }
     printf("[Frequency Server] Memory successfully cached...\n");
 
+    // Initialize SHM to zero
+    printf("[Frequency Server] Initializing Shared Memory to zero...\n");
+    for (int i = 0; i < PARAM_NUM; i++) {
+        memset(objects[i]->shm_ptr, 0, objects[i]->size);
+    }
+    printf("[Frequency Server] Successfully initialized SHM to zero...\n");
+
 
     // Open Semaphores for synchronization     
     printf("[Frequency Server] Opening Communication Semaphores...\n");    
@@ -514,7 +532,7 @@ int main() {
         } 
     }
     printf("[Frequency Server] Done Initializing...\n\n");
-
+    
     // Allocate temp mem for shm varibles
     fftw_complex **temp_samples = NULL;
     temp_samples = (fftw_complex **)fftw_malloc(ANTENNA_NUM * sizeof(fftw_complex *));
@@ -595,6 +613,7 @@ int main() {
     meta_data.antenna_list = malloc(ANTENNA_NUM * sizeof(int));
     add_ptr(meta_data.antenna_list);
     int old_antenna_num = ANTENNA_NUM;
+    int samples_num = SAMPLES_NUM;
             
     // Parameters for Reading Restricted Frequencies
     char *restrict_file = "";
@@ -655,8 +674,8 @@ int main() {
 
                     // Request Block of Memory
                     printf("[Frequency Server] Requesting Shared Memory Cache...\n");                    
-                    samples_obj.shm_ptr = mmap(0, samples_obj.size, PROT_WRITE | PROT_READ, MAP_SHARED, samples_obj.shm_fd, 0);
-                    if (samples_obj.shm_ptr == MAP_FAILED) {
+                    meta_obj.shm_ptr = mmap(0, meta_obj.size, PROT_WRITE | PROT_READ, MAP_SHARED, meta_obj.shm_fd, 0);
+                    if (meta_obj.shm_ptr == MAP_FAILED) {
                         printf("[Frequency Server] Memory Mapping failed for %s\n", meta_obj.name);
                         exit(EXIT_FAILURE);
                     }                    
@@ -664,7 +683,7 @@ int main() {
 
                     /// Sample Reallocation
                     // Set Size of Shared Memory Object
-                    samples_obj.size = (meta_data.num_antennas) * SAMPLES_NUM * 2 * sizeof(int);
+                    samples_obj.size = (meta_data.num_antennas) * samples_num * 2 * sizeof(int);
                     if (ftruncate(samples_obj.shm_fd, samples_obj.size) == -1) {
                         perror("[Frequency Server] ftruncate failed\n");
                         exit(EXIT_FAILURE);
@@ -688,7 +707,7 @@ int main() {
                         exit(EXIT_FAILURE);
                     }
                     for (int i = 0; i < meta_data.num_antennas; i++) {
-                        temp_samples[i] = (fftw_complex *)fftw_malloc(SAMPLES_NUM * sizeof(fftw_complex));
+                        temp_samples[i] = (fftw_complex *)fftw_malloc(samples_num * sizeof(fftw_complex));
                         if (temp_samples[i] == NULL) {
                             perror("Error allocating memory for temp_samples elements");
                             exit(EXIT_FAILURE);
@@ -699,6 +718,7 @@ int main() {
                 // Read Meta Data 
                 printf("[Frequency Server] Meta Data reading...\n");
                 read_meta_data(&meta_data, meta_obj.shm_ptr, meta_data.num_antennas);
+                samples_num = meta_data.number_of_samples;
 
                 for (int j = 0; j < meta_data.num_antennas; j++) {
                     printf("    antenna_list[%d]: %d\n", j, meta_data.antenna_list[j]);
@@ -716,12 +736,11 @@ int main() {
     
             // If first client or new site_id, proceed to read in site_id and Restrict File
             if (site_id != new_site_id) {
+                printf("[Frequency Server] Site ID assigned, getting site's Resticted Frequencies ...\n");
                 site_id = new_site_id;
                 // Get site specific restrict file
                 if (strcmp(new_site_id,"lab") != 0) {
                     printf("[Frequency Server] Using restrict.dat.inst in site_id\n\n");
-                    // Typical File path is ...
-                    // "/home/radar/repos/SuperDARN_MSI_ROS/linux/home/radar/ros.3.6/tables/superdarn/site/site.mcm/restrict.dat.mcm";
                     sprintf(restrict_file,"%s/site.%s/restrict.dat.%s",site_path,site_id,site_id);
                     printf("\nFrequency Server] Using restrict file path: %s\n\n", restrict_file);
                 } 
@@ -736,21 +755,21 @@ int main() {
             }
 
             sem_post(sl_init.sem);
-            printf("[Frequency Server] Initialization data read; processing...\n");
+            // printf("[Frequency Server] Initialization data read; processing...\n");
             // TODO: storeInRadarTable(restrict_freq, meta_data)
-            printf("[Frequency Server] Initialization data processed...\n");
+            // printf("[Frequency Server] Initialization data processed...\n");
         }
-
-        printf("attempting sample process\n");
-
+        
+        printf("[Frequency Server] Processing Clear Frequency...\n");
+        
         // Special: Semaphore order is faulty
         if (meta_data.num_antennas == 0) {
-                printf("[Frequency Server] ERROR: Called for Clear Freq without prior Initialization\n");
-                printf("[Frequency Server] ERROR: There is likely a semaphore leak, please close and restart all related processes.\n");
-                cleanup();
-                return 0;
-            }
-
+            printf("[Frequency Server] ERROR: Called for Clear Freq without prior Initialization\n");
+            printf("[Frequency Server] ERROR: There is likely a semaphore leak, please close and restart all related processes.\n");
+            cleanup();
+            return 0;
+        }
+        
         // If samples flagged, process clear frequency
         else if (sem_trywait(sf_samples.sem) == 0 && meta_data.num_antennas != 0){
             // Wait to read-in data
@@ -759,25 +778,25 @@ int main() {
 
             // Process Sample relevant data
             printf("[Frequency Server] Processing client sample data...\n");
-            read_sample_shm(temp_samples, samples_obj.shm_ptr, meta_data.num_antennas);
+            read_sample_shm(temp_samples, samples_obj.shm_ptr, meta_data.num_antennas, samples_num);
             printf("[Frequency Server] Samples done...\n");
             
             if (*(int*) (clr_range_obj.shm_ptr) != 0) {
                 printf("[Frequency Server] Clear Range reading...\n");
                 read_int(clr_range, clr_range_obj.shm_ptr, 2);
-                printf("    clr_range: %d -- %d\n", clr_range[0], clr_range[1]);
+                // printf("    clr_range: %d -- %d\n", clr_range[0], clr_range[1]);
             }
 
             if (*(int*) (fcenter_obj.shm_ptr) != 0) {
                 printf("[Frequency Server] Freq Center reading...\n");
                 read_single_int( &(meta_data.usrp_fcenter), fcenter_obj.shm_ptr);
-                printf("    fcenter: %d\n", meta_data.usrp_fcenter);
+                // printf("    fcenter: %d\n", meta_data.usrp_fcenter);
             }
 
             if (*(int*) (beam_num_obj.shm_ptr) != 0) {
                 printf("[Frequency Server] Beam Number reading...\n");
                 read_single_int(&beam_num, beam_num_obj.shm_ptr);
-                printf("    beam_num: %d\n", beam_num);
+                // printf("    beam_num: %d\n", beam_num);
             }
 
             sem_post(sl_samples.sem);
@@ -845,6 +864,4 @@ int main() {
         t2 = clock();
         printf("[Frequency Server] Processing Time for Client (s): %lf\n", ((double) (t2 - t1)) / (CLOCKS_PER_SEC));
     }
-
-    // cleanup();
 }
