@@ -756,7 +756,7 @@ int main() {
                     printf("\nFrequency Server] Using restrict file path: %s\n\n", restrict_file);
                     
                 } 
-                // Default: Get /mcm testing restrict file
+                // Default: Get lab testing restrict file
                 else {
                     restrict_file = "/home/df/Desktop/PSU-SuperDARN/SuperDARN_MSI_ROS/linux/home/radar/ros.3.6/tables/superdarn/site/site.sys/restrict.dat.inst";               // File path for lab testing
                     
