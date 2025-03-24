@@ -72,16 +72,17 @@ class ClearFrequencyService():
     RESTRICT_PARAM_NUM =    2
     PARAM_NUM =             9
     
-    SEM_F_CLIENT =  "/sf_client"               # For reserving client and server roles during data transfer
-    SEM_F_SERVER =  "/sf_server"               # And for signalling specific data transfers 
-    SEM_F_SAMPLES = "/sf_samples"
-    SEM_F_INIT =    "/sf_init"           
-    SEM_F_CLRFREQ = "/sf_clrfreq"              
-    SEM_L_SAMPLES = "/sl_samples"              # For Data locking b/w write/reads
-    SEM_L_INIT =    "/sl_init"                 # init = initialization
-    SEM_L_CLRFREQ = "/sl_clrfreq"
+    SEM_F_CLIENT =      "/sf_client"               # For reserving client and server roles during data transfer
+    SEM_F_SERVER =      "/sf_server"               # And for signalling specific data transfers 
+    SEM_F_SAMPLES =     "/sf_samples"
+    SEM_F_INIT =        "/sf_init"           
+    SEM_F_CLRFREQ =     "/sf_clrfreq"              
+    SEM_F_PROCESSED =   "/sf_processed"            # For processed data transfer
+    SEM_L_SAMPLES =     "/sl_samples"              # For Data locking b/w write/reads
+    SEM_L_INIT =        "/sl_init"                 # init = initialization
+    SEM_L_CLRFREQ =     "/sl_clrfreq"
     
-    SEM_NUM =       8
+    SEM_NUM =       9
     SL_NUM =        3
     
     # Initialization Check
@@ -97,20 +98,22 @@ class ClearFrequencyService():
         
         try:
             # Shared Memory Object and Semaphores
-            self.sf_client  = self.create_semaphore(self.SEM_F_CLIENT)
-            self.sf_server  = self.create_semaphore(self.SEM_F_SERVER)
-            self.sf_samples = self.create_semaphore(self.SEM_F_SAMPLES)
-            self.sf_init    = self.create_semaphore(self.SEM_F_INIT)
-            self.sf_clrfreq = self.create_semaphore(self.SEM_F_CLRFREQ)
-            self.sl_samples = self.create_semaphore(self.SEM_L_SAMPLES)
-            self.sl_init    = self.create_semaphore(self.SEM_L_INIT)
-            self.sl_clrfreq = self.create_semaphore(self.SEM_L_CLRFREQ)
+            self.sf_client      = self.create_semaphore(self.SEM_F_CLIENT)
+            self.sf_server      = self.create_semaphore(self.SEM_F_SERVER)
+            self.sf_samples     = self.create_semaphore(self.SEM_F_SAMPLES)
+            self.sf_init        = self.create_semaphore(self.SEM_F_INIT)
+            self.sf_clrfreq     = self.create_semaphore(self.SEM_F_CLRFREQ)
+            self.sf_processed   = self.create_semaphore(self.SEM_F_PROCESSED)
+            self.sl_samples     = self.create_semaphore(self.SEM_L_SAMPLES)
+            self.sl_init        = self.create_semaphore(self.SEM_L_INIT)
+            self.sl_clrfreq     = self.create_semaphore(self.SEM_L_CLRFREQ)
             self.semaphores = [
                 self.sf_client,
                 self.sf_server,
                 self.sf_samples,
                 self.sf_init,
                 self.sf_clrfreq,
+                self.sf_processed,
                 self.sl_samples,
                 self.sl_init,
                 self.sl_clrfreq,
@@ -461,9 +464,9 @@ class ClearFrequencyService():
                 # Return Center Freq and Noise
                 packed_data.append(int(((start_freq + end_freq) / 2) / 1000))
                 noise_data.append(noise)
-            return packed_data, noise_data            
-                
-    def request_clr_freq(self, raw_samples, clr_range=None, fcenter=None, beam_num=None, sample_sep=None, restrict_data=None, meta_data=None, ):
+            return packed_data, noise_data     
+        
+    def send_samples(self, raw_samples, clr_range=None, fcenter=None, beam_num=None, sample_sep=None, restrict_data=None, meta_data=None, ):
         """ Waits for client requests, then processes server data, writes client 
             data, and requests server to process new data. When process is 
             terminated, the try/finally block cleans up.
@@ -532,21 +535,6 @@ class ClearFrequencyService():
                 print("[clearFrequencyService] Requesting Initialization Semaphore...")
                 self.sl_init['sem'].acquire()
                 print("[clearFrequencyService] Initialization Semaphore Acquired...")
-                
-                # # If restrict data present, send & overwrite 
-                # if restrict_data is not None:    
-                #     print(f"[Frequency Client] Data Write Progress: {self.shm_objects[5]['name']}")
-                #     # self.write_m_data(self.shm_objects[5], [(int(x)) for x in restrict_data])
-                    
-                #     new_restrict_data = []
-                #     # print("[Frequency Client] restrict_arr len: ", len(restrict_data))
-                #     for restricted_freq in restrict_data:   
-                #         new_restrict_data.append(int(restricted_freq[0]))
-                #         new_restrict_data.append(int(restricted_freq[1]))
-                        
-                #     print("[Frequency Client] Writing restricted freq data:\n", restrict_data[:2], "...")
-                #     self.shm_objects[5]['shm_ptr'].seek(0)
-                #     self.shm_objects[5]['shm_ptr'].write(struct.pack('i' * (self.RESTRICT_NUM * 2), *new_restrict_data))
                 
                 # If sample separation present, send
                 if sample_sep is not None:                
@@ -630,20 +618,104 @@ class ClearFrequencyService():
                 print("[clearFrequencyService] Requesting Server Response...")
                 self.sf_server['sem'].release()
                 
-                # Read-in Clear Freq data
-                print("[clearFrequencyService] Awaiting Server Response...")
-                self.sf_clrfreq['sem'].acquire()
-                self.sl_clrfreq['sem'].acquire()
-                print("[clearFrequencyService] Recieved Server Response. Reading Clear Freq data...")
-                new_noise_data = []
-                new_clrfreq_data = self.read_m_data(self.shm_objects[8])
-                new_clrfreq_data, new_noise_data = self.repack_data(new_clrfreq_data, True)
-                for clr_freq_and_noise in zip(new_clrfreq_data, new_noise_data):
-                    print(f"[clearFrequencyService] Clear Freq Band: | {clr_freq_and_noise[0]} (kHz), {clr_freq_and_noise[1]} (N/A) |")
-                clr_freq, noise = new_clrfreq_data[0], new_noise_data[0]
-                
-                self.sl_clrfreq['sem'].release()
                         
+        except KeyboardInterrupt:
+            print("[clearFrequencyService] Keyboard interrupt received. Exiting...")
+        except posix_ipc.ExistentialError or ValueError or AttributeError:
+                print("[clearFrequencyService] Shared memory has been delinked. Exiting...")
+        finally:
+            active_clients = self.decrement_active_clients()
+                
+        return 
+                
+    def request_clr_freq(self, raw_samples, clr_range=None, fcenter=None, beam_num=None, sample_sep=None, restrict_data=None, meta_data=None, ):
+        """ Waits for client requests, then processes server data, writes client 
+            data, and requests server to process new data. When process is 
+            terminated, the try/finally block cleans up.
+        """
+        input_data = [
+            raw_samples, 
+            clr_range, 
+            fcenter, 
+            beam_num,
+            sample_sep, 
+            restrict_data, 
+            meta_data,
+            self.sid,
+        ]
+        
+        # Special: Halt all future ClearFreqService
+        if self.soft_kill is True:
+            return
+                
+        # Get in Queue
+        active_clients = self.increment_active_clients()
+        print(f"[clearFrequencyService] Active clients count: {active_clients}\n")
+        
+        try:
+            ## Check for Premapped antenna num
+            # Map shared memory object pointer for antenna num
+            print(f"Mapping {self.shm_objects[7]['name']}")
+            self.shm_objects[7]['shm_ptr'] = mmap.mmap(self.shm_objects[7]['shm_fd'], self.shm_objects[7]['size'], mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE)
+            
+            # Check if Antenna Num changed, update corresponding values before they're mapped
+            shm_ant_num = self.read_m_data(self.shm_objects[7])[0]
+            print("SHM Antenna_num:  ", shm_ant_num)
+            print("Meta Antenna num: ", len(meta_data['antenna_list']))
+            if shm_ant_num != self.cur_antenna_num or self.cur_antenna_num != len(meta_data['antenna_list']):
+                print("Antenna_num has been changed, updating SHM values before further SHM mapping...")
+                self.cur_antenna_num = len(meta_data['antenna_list'])
+                
+                # Update meta SHM values
+                meta_obj = self.shm_objects[6]
+                meta_obj['elem_num'] = len(meta_data['antenna_list']) + self.META_ELEM
+                meta_obj['size'] = meta_obj['elem_num'] * self.DOUBLE_SIZE
+                os.ftruncate(meta_obj['shm_fd'], meta_obj['size'])
+                
+                # Update samples SHM values
+                samples_obj = self.shm_objects[0]
+                samples_obj['elem_num'] = len(meta_data['antenna_list']) * self.SAMPLES_NUM * 2
+                samples_obj['size'] = samples_obj['elem_num'] * self.INT_SIZE
+                os.ftruncate(samples_obj['shm_fd'], samples_obj['size'])
+                
+            # Map shared memory object pointers
+            print(f"Mapping Shared Memory for Objects...\n")
+            for obj in self.shm_objects:
+                # Special: Skip Antenna_Num mapping
+                if obj['name'] == '/antenna_num':
+                    continue
+                print(f"Mapping {obj['name']}")
+                obj['shm_ptr'] = mmap.mmap(obj['shm_fd'], obj['size'], mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE)
+                            
+                            
+            # Await for a Client Request
+            print("[clearFrequencyService] Awaiting Client Request...\n")
+            self.sf_client['sem'].acquire()
+            print("[clearFrequencyService] Acquired Client Request...")
+                                            
+                                            
+            ## Send Clear Frequency Request
+            print("[clearFrequencyService] Requesting Clear Freq...")
+            self.sl_clrfreq['sem'].acquire()
+            
+            # Request Server 
+            print("[clearFrequencyService] Requesting Server Response...")
+            self.sf_server['sem'].release()
+            
+            # Read-in Clear Freq data
+            print("[clearFrequencyService] Awaiting Server Response...")
+            self.sf_clrfreq['sem'].acquire()
+            self.sl_clrfreq['sem'].acquire()
+            print("[clearFrequencyService] Recieved Server Response. Reading Clear Freq data...")
+            new_noise_data = []
+            new_clrfreq_data = self.read_m_data(self.shm_objects[8])
+            new_clrfreq_data, new_noise_data = self.repack_data(new_clrfreq_data, True)
+            for clr_freq_and_noise in zip(new_clrfreq_data, new_noise_data):
+                print(f"[clearFrequencyService] Clear Freq Band: | {clr_freq_and_noise[0]} (kHz), {clr_freq_and_noise[1]} (N/A) |")
+            clr_freq, noise = new_clrfreq_data[0], new_noise_data[0]
+            
+            self.sl_clrfreq['sem'].release()
+                    
         except KeyboardInterrupt:
             print("[clearFrequencyService] Keyboard interrupt received. Exiting...")
         except posix_ipc.ExistentialError or ValueError or AttributeError:

@@ -65,16 +65,17 @@
 #define RESTRICT_PARAM_NUM 2
 #define PARAM_NUM 11
 
-#define SEM_F_CLIENT    "/sf_client"               // For Sync and reserving client and server roles during data transfer
+#define SEM_F_CLIENT    "/sf_client"                // For Sync and reserving client and server roles during data transfer
 #define SEM_F_SERVER    "/sf_server"    
 #define SEM_F_SAMPLES   "/sf_samples"
 #define SEM_F_INIT      "/sf_init"           
-#define SEM_F_CLRFREQ   "/sf_clrfreq"              // For multiple data transfers on single instance 
-#define SEM_L_SAMPLES   "/sl_samples"              // For Data locking b/w write/reads
-#define SEM_L_INIT      "/sl_init"                 // init = initialization
+#define SEM_F_CLRFREQ   "/sf_clrfreq"               // For multiple data transfers on single instance 
+#define SEM_F_PROCESSED "/sf_processed"             // For processed data transfer
+#define SEM_L_SAMPLES   "/sl_samples"               // For Data locking b/w write/reads
+#define SEM_L_INIT      "/sl_init"                  // init = initialization
 #define SEM_L_CLRFREQ   "/sl_clrfreq"
 #define SL_NUM 3
-#define SEM_NUM 8
+#define SEM_NUM 9
 
 typedef struct shm_obj{
     const char* name;
@@ -91,27 +92,24 @@ typedef struct semaphore {
 
 
 
-// TODO: Read of specific data types 
-// TODO: Calc all beam directions at recieve of samples
-// TODO: Num of Radar {has table of all beam dirc {has Clr freq in beam direction}}} while sharing restricting assigned freq 
-// TODO: Rewrite of usrp sample send/clr freq request timing logic 
-
 // Semaphores Locks prevent race conditions
 // Semaphore Flags allow client and server to signal specific data transfers
-struct semaphore sf_client   = {SEM_F_CLIENT,  NULL};
-struct semaphore sf_server   = {SEM_F_SERVER,  NULL};
-struct semaphore sf_samples  = {SEM_F_SAMPLES, NULL};
-struct semaphore sf_init     = {SEM_F_INIT,    NULL};
-struct semaphore sf_clrfreq  = {SEM_F_CLRFREQ, NULL};
-struct semaphore sl_samples  = {SEM_L_SAMPLES, NULL};
-struct semaphore sl_init     = {SEM_L_INIT,    NULL};
-struct semaphore sl_clrfreq  = {SEM_L_CLRFREQ, NULL};
+struct semaphore sf_client   = {SEM_F_CLIENT,       NULL};
+struct semaphore sf_server   = {SEM_F_SERVER,       NULL};
+struct semaphore sf_samples  = {SEM_F_SAMPLES,      NULL};
+struct semaphore sf_init     = {SEM_F_INIT,         NULL};
+struct semaphore sf_clrfreq  = {SEM_F_CLRFREQ,      NULL};
+struct semaphore sf_processed= {SEM_F_PROCESSED,    NULL};
+struct semaphore sl_samples  = {SEM_L_SAMPLES,      NULL};
+struct semaphore sl_init     = {SEM_L_INIT,         NULL};
+struct semaphore sl_clrfreq  = {SEM_L_CLRFREQ,      NULL};
 struct semaphore *semaphores[SEM_NUM] = {
     &sf_client,
     &sf_server,    
     &sf_samples,
     &sf_init,
     &sf_clrfreq,
+    &sf_processed,
     &sl_samples,
     &sl_init,
     &sl_clrfreq,
@@ -541,24 +539,24 @@ void write_clr_log_csv(freq_band **clr_storage, int clr_num) {
     }
     fprintf(file, "Start Frequency,End Frequency,Noise,Clear Freq Start,Clear Freq End\n");
     for (int clr_batch_idx = 0; clr_batch_idx < clr_num; clr_batch_idx++) {
-        freq_band *clr_bands = clr_storage[clr_batch_idx];        
-        
+        freq_band *clr_bands = clr_storage[clr_batch_idx];
+
         // Find Start and End of Clear Freq Range
         int clr_start = RAND_MAX;
         int clr_end = 0;
         for (int i = 0; i < CLR_BANDS_MAX; i++) {
-            if (clr_storage[clr_batch_idx][i].f_start < clr_start && clr_storage[clr_batch_idx][i].noise < RAND_MAX) clr_start = clr_storage[clr_batch_idx][i].f_start;
-            if (clr_storage[clr_batch_idx][i].f_end > clr_end && clr_storage[clr_batch_idx][i].noise < RAND_MAX) clr_end = clr_storage[clr_batch_idx][i].f_end;
+            if (clr_bands[i].f_start < clr_start && clr_bands[i].noise < RAND_MAX) clr_start = clr_bands[i].f_start;
+            if (clr_bands[i].f_end > clr_end && clr_bands[i].noise < RAND_MAX) clr_end = clr_bands[i].f_end;
         }    
-        
+
         // Record each Clear Freq
         for (int i = 0; i < CLR_BANDS_MAX; i++) {
             // Debug: Output results
             // printf("Clear Freq Band[%d]: | %dHz -- Noise: %f -- %dHz |\n", i, clr_storage[clr_batch_idx][i].f_start, clr_storage[clr_batch_idx][i].noise, clr_storage[clr_batch_idx][i].f_end);
             
             // Special: Print Clear Freq Range on Line 0
-            if (i == 0) fprintf(file, "%d,%d,%f,%d,%d\n", clr_storage[clr_batch_idx][i].f_start, clr_storage[clr_batch_idx][i].f_end, clr_storage[clr_batch_idx][i].noise,clr_start,clr_end);
-            else fprintf(file, "%d,%d,%f\n", clr_storage[clr_batch_idx][i].f_start, clr_storage[clr_batch_idx][i].f_end, clr_storage[clr_batch_idx][i].noise);
+            if (i == 0) fprintf(file, "%d,%d,%f,%d,%d\n", clr_bands[i].f_start, clr_bands[i].f_end, clr_bands[i].noise,clr_start,clr_end);
+            else fprintf(file, "%d,%d,%f\n", clr_bands[i].f_start, clr_bands[i].f_end, clr_bands[i].noise);
         }
     }
 
@@ -938,7 +936,7 @@ int main() {
             return 0;
         }
         
-        // If samples flagged, process clear frequency
+        // If samples flagged, process samples and clear frequency
         else if (sem_trywait(sf_samples.sem) == 0 && meta_data.num_antennas != 0){
             // Wait to read-in data
             printf("[Frequency Server] Awaiting sample data unlock...\n");
@@ -970,13 +968,13 @@ int main() {
             sem_post(sl_samples.sem);
 
             // Store Sample Data
-            // if (samples_storage_i < STORAGE_NUM) {
+            // if (samples_storage_i < (STORAGE_TIME / SAMPLE_TIME)) {
             //     samples_storage[samples_storage_i] = temp_samples;
             //     samples_storage_i++;
             // }
             // else {
             //     // Process Samples Storage per time Packets ...
-            //     for (int i = 0; i < STORAGE_NUM; i++) {
+            //     for (int i = 0; i < (STORAGE_TIME / SAMPLE_TIME); i++) {
             //         // Beamform and FFT in all directions
 
             //         // Store in temp bin
@@ -987,18 +985,10 @@ int main() {
 
             //     // 
                 
-                //         // Store in temp bin
-                //     }
-                
-                //     // Spectral Avg (all packets into 1 and X # of samples by Avg Aatio) and Find Clear Freqs
-                
-                
-                //     // 
-                
-                
-                //     samples_storage_i = 0;
-                // }
-                    
+
+            //     samples_storage_i = 0;
+            // }
+
             // Process Clear Freq
             printf("[Frequency Server] Starting Clear Freq Search...\n");
             clear_freq_search(
@@ -1027,7 +1017,7 @@ int main() {
             printf("[Frequency Server] Processed Clear Freq Request successfully...\n");
 
 
-            // Debug: Store prior clear freq band sets
+            // Log prior clear freq band sets
             memcpy(clr_bands_storage[clr_storage_i], clr_bands, CLR_BANDS_MAX * sizeof(freq_band));
             clr_storage_i++;
             printf("[Frequency Server] Clr Freq Log Batch: %d/%d\n", clr_storage_i, CLR_STORAGE_NUM);
@@ -1035,8 +1025,32 @@ int main() {
                 write_clr_log_csv(clr_bands_storage, clr_storage_i);
                 clr_storage_i = 0;
             }
+            printf("[Frequency Server] Clr Freq Log Batch: %d/%d\n", clr_storage_i + 1, CLR_STORAGE_NUM);
+        } 
+
+        // If Clear Freq flagged, process clear frequency
+        else if (sem_trywait(sf_clrfreq.sem) == 0 && clr_bands != NULL) {
+            printf("[Frequency Server] Awaiting Clear Freq unlock...\n");
+            sem_wait(sl_clrfreq.sem);
+
+
+            printf("[Frequency Server] clrfreq_shm written...\n");
+            write_clrfreq_shm(clr_bands, clrfreq_obj.shm_ptr);
+
+
+            printf("[Frequency Server] Processed Clear Freq Request successfully...\n");
+            sem_post(sl_clrfreq.sem);
+        }
+
+        // If no data to process, exit
+        else {
+            printf("[Frequency Server] ERROR: No Clear Freq or Sample data to process...\n");
+            printf("[Frequency Server] ERROR: There is likely a semaphore leak or error in CFS order of operations, please close and restart all related processes.\n");
+            cleanup();
+            return 0;
         }
         
+        sem_post(sf_processed.sem);
         printf("[Frequency Server] Processed Client successfully...\n");
 
         t2 = clock();
