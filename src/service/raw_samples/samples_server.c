@@ -12,6 +12,7 @@
 #include <signal.h>
 #include <time.h>
 #include "../../clear_freq_search.c"
+#include "samples_server.h"
 
 
 
@@ -540,24 +541,24 @@ void write_clr_log_csv(freq_band **clr_storage, int clr_num) {
     }
     fprintf(file, "Start Frequency,End Frequency,Noise,Clear Freq Start,Clear Freq End\n");
     for (int clr_batch_idx = 0; clr_batch_idx < clr_num; clr_batch_idx++) {
-        freq_band *clr_bands = clr_storage[clr_batch_idx];
-
+        freq_band *clr_bands = clr_storage[clr_batch_idx];        
+        
         // Find Start and End of Clear Freq Range
         int clr_start = RAND_MAX;
         int clr_end = 0;
         for (int i = 0; i < CLR_BANDS_MAX; i++) {
-            if (clr_bands[i].f_start < clr_start && clr_bands[i].noise < RAND_MAX) clr_start = clr_bands[i].f_start;
-            if (clr_bands[i].f_end > clr_end && clr_bands[i].noise < RAND_MAX) clr_end = clr_bands[i].f_end;
+            if (clr_storage[clr_batch_idx][i].f_start < clr_start && clr_storage[clr_batch_idx][i].noise < RAND_MAX) clr_start = clr_storage[clr_batch_idx][i].f_start;
+            if (clr_storage[clr_batch_idx][i].f_end > clr_end && clr_storage[clr_batch_idx][i].noise < RAND_MAX) clr_end = clr_storage[clr_batch_idx][i].f_end;
         }    
-
+        
         // Record each Clear Freq
         for (int i = 0; i < CLR_BANDS_MAX; i++) {
             // Debug: Output results
             // printf("Clear Freq Band[%d]: | %dHz -- Noise: %f -- %dHz |\n", i, clr_storage[clr_batch_idx][i].f_start, clr_storage[clr_batch_idx][i].noise, clr_storage[clr_batch_idx][i].f_end);
             
             // Special: Print Clear Freq Range on Line 0
-            if (i == 0) fprintf(file, "%d,%d,%f,%d,%d\n", clr_bands[i].f_start, clr_bands[i].f_end, clr_bands[i].noise,clr_start,clr_end);
-            else fprintf(file, "%d,%d,%f\n", clr_bands[i].f_start, clr_bands[i].f_end, clr_bands[i].noise);
+            if (i == 0) fprintf(file, "%d,%d,%f,%d,%d\n", clr_storage[clr_batch_idx][i].f_start, clr_storage[clr_batch_idx][i].f_end, clr_storage[clr_batch_idx][i].noise,clr_start,clr_end);
+            else fprintf(file, "%d,%d,%f\n", clr_storage[clr_batch_idx][i].f_start, clr_storage[clr_batch_idx][i].f_end, clr_storage[clr_batch_idx][i].noise);
         }
     }
 
@@ -728,6 +729,7 @@ int main() {
     }
     add_ptr((void **)&clr_bands);
 
+    freq_band **clr_bands_storage = NULL;
     clr_bands_storage = (freq_band **)malloc(CLR_STORAGE_NUM * sizeof(freq_band *));
     if (clr_bands_storage == NULL) {
         perror("Error allocating memory for clr_bands_storage pointers");
@@ -985,10 +987,18 @@ int main() {
 
             //     // 
                 
-
-            //     samples_storage_i = 0;
-            // }
-
+                //         // Store in temp bin
+                //     }
+                
+                //     // Spectral Avg (all packets into 1 and X # of samples by Avg Aatio) and Find Clear Freqs
+                
+                
+                //     // 
+                
+                
+                //     samples_storage_i = 0;
+                // }
+                    
             // Process Clear Freq
             printf("[Frequency Server] Starting Clear Freq Search...\n");
             clear_freq_search(
