@@ -746,9 +746,9 @@ trimmed_samples = raw_samples[:1]         #HACK: writes only first two antenna's
 #                 meta_data=meta_data
 #                 )
 
-while (True):
+# while (True):
     # meta_data['antenna_list'] = meta_ant_full
-    CFS.request_clr_freq(raw_samples, 
+CFS.request_clr_freq(raw_samples, 
                     clr_range=clear_freq_range, 
                     fcenter=12000,
                     beam_num=1,
