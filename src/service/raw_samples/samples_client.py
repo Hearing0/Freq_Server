@@ -735,7 +735,12 @@ clear_freq_range = [ int(12 * pow(10,6)), int(12.5 * pow(10,6)) ]
 
 meta_ant_full = meta_data['antenna_list']
 meta_ant_partial = [0,2] 
-trimmed_samples = raw_samples[:1]         #HACK: writes only first two antenna's samples
+trimmed_samples = raw_samples[:2]         #HACK: writes only first two antenna's samples
+print(f"raw_samples size: {len(raw_samples) * len(raw_samples[0])}")
+print(f"trimmed_s size: {len(trimmed_samples) * len(trimmed_samples[0])}")
+print(f"raw_samples shape: {len(raw_samples)} x {len(raw_samples[0])} x {2} (antenna_num x sample_num x complex)")
+print(f"trimmed_samples shape: {len(trimmed_samples)} x {len(trimmed_samples[0])} x {2} (antenna_num x sample_num x complex)")
+print(f"trimmed_samples: {trimmed_samples}")
 
 # CFS.flag_debug(trimmed_samples, 
 #                 clr_range=clear_freq_range, 
@@ -745,9 +750,9 @@ trimmed_samples = raw_samples[:1]         #HACK: writes only first two antenna's
 #                 meta_data=meta_data
 #                 )
 
-# while (True):
-    # meta_data['antenna_list'] = meta_ant_full
-CFS.request_clr_freq(raw_samples, 
+while (True):
+    meta_data['antenna_list'] = meta_ant_full
+    CFS.request_clr_freq(raw_samples, 
                     clr_range=clear_freq_range, 
                     fcenter=12000,
                     beam_num=1,
@@ -755,13 +760,13 @@ CFS.request_clr_freq(raw_samples,
                     meta_data=meta_data,
                     )
 
-    # meta_data['antenna_list'] = meta_ant_partial
-    # CFS.request_clr_freq(trimmed_samples[:0], 
-    #                 clr_range=clear_freq_range, 
-    #                 fcenter=12000,
-    #                 beam_num=1,
-    #                 sample_sep=340,
-    #                 meta_data=meta_data
-    #                 )
+    meta_data['antenna_list'] = meta_ant_partial
+    CFS.request_clr_freq(trimmed_samples, 
+                    clr_range=clear_freq_range, 
+                    fcenter=12000,
+                    beam_num=1,
+                    sample_sep=340,
+                    meta_data=meta_data
+                    )
 
 # CFS.request_clr_freq(raw_samples)
