@@ -368,23 +368,25 @@ void read_meta_data(sample_meta_data *result, void *shm_ptr, int ant_num) {
     double *ref_ptr = (double *) shm_ptr;
     int *antenna_ptr = (int *) result->antenna_list;
 
-    // Read in antenna_list elements
-    for (int i = 0; i < ant_num; i++) {
-        antenna_ptr[i] = (int) ref_ptr[i];
-        if (VERBOSE && i < 2) printf("    reading antenna_list: %d\n", antenna_ptr[i]);
+    
+    // Loop thru all meta elements and copy into result
+    for (int i = 0; i < (META_ELEM); i++) {
+        printf("reading[%d]: %f\n", i, ref_ptr[i]);
+        
+        if      (i == (0)) result->number_of_samples = (int) ref_ptr[i];
+        else if (i == (1)) result->x_spacing = ref_ptr[i];
+        else if (i == (2)) result->usrp_rf_rate = (int) ref_ptr[i];
+        
+        // if (VERBOSE && i < (ant_num + 2)) printf("    read_meta: %f\n", ref_ptr[i]);
     }
 
-    printf("Fin reading ant list and reading meta_elem...\n");
-
-    // Loop thru all meta elements and copy into result
-    for (int i = ant_num; i < (META_ELEM + ant_num); i++) {
-        printf("reading[%d]: %f\n", i, ref_ptr[i]);
-
-        if      (i == (ant_num))     result->number_of_samples = (int) ref_ptr[i];
-        else if (i == (ant_num + 1)) result->x_spacing = ref_ptr[i];
-        else if (i == (ant_num + 2)) result->usrp_rf_rate = (int) ref_ptr[i];
-
-        // if (VERBOSE && i < (ant_num + 2)) printf("    read_meta: %f\n", ref_ptr[i]);
+    printf("Fin reading meta_elem; reading antenna_list...\n");
+    
+    // Read in antenna_list elements
+    for (int i = META_ELEM; i < (ant_num + META_ELEM); i++) {
+        if (VERBOSE) printf("    reading antenna_list: %d\n", antenna_ptr[i - META_ELEM]);
+        if (VERBOSE) printf("    reading ref_ptr     : %d\n", (int) ref_ptr[i]);
+        antenna_ptr[i - META_ELEM] = (int) ref_ptr[i];
     }
 }
 
@@ -563,7 +565,6 @@ void write_clr_log_csv(freq_band **clr_storage, int clr_num) {
 }
 
 void flag_debug() {
-    sample_meta_data meta_data = {0};
 
     printf("[FLAG DEBUGGING] All functionality except for semaphore flags is absent!\n");
     printf("[FLAG DEBUGGING] Comment out the flag_debug() function to revert to standard functionality.\n\n");
@@ -707,13 +708,17 @@ int main() {
     }
 
     int restricted_num = RESTRICT_NUM;      // Number of Restricted Freqs at runtime varies depending on site
-    freq_band *restricted_freq = NULL;
-    restricted_freq = (freq_band *)malloc(restricted_num * sizeof(freq_band));
-    if (restricted_freq == NULL) {
-        perror("Error allocating memory for restricted_freq elements");
-        exit(EXIT_FAILURE);
+    freq_band restricted_freq[restricted_num];
+    for (int i = 0; i < restricted_num; i++) {
+        restricted_freq[i].f_start = 0;
+        restricted_freq[i].f_end = 0;
     }
-    add_ptr((void **)&restricted_freq);
+    // restricted_freq = (freq_band *)malloc(restricted_num * sizeof(freq_band));
+    // if (restricted_freq == NULL) {
+    //     perror("Error allocating memory for restricted_freq elements");
+    //     exit(EXIT_FAILURE);
+    // }
+    // add_ptr((void **)&restricted_freq);
 
     freq_band *clr_bands = NULL;
     clr_bands = (freq_band *)malloc(CLR_BANDS_MAX * sizeof(freq_band));
@@ -789,7 +794,6 @@ int main() {
 
                 // If new num_antennas, Reallocate meta SHM 
                 if (meta_data.num_antennas != old_antenna_num) {
-                    old_antenna_num = meta_data.num_antennas;
                     printf("num of antenna: %d\n", meta_data.num_antennas);
                     
                     // Set Size of Shared Memory Object
@@ -844,6 +848,7 @@ int main() {
                         fftw_free(temp_samples);
                         temp_samples = NULL;
                     }
+                    printf("[Frequency Server] Freed old temp_samples memory...\n");
                     
                     // Allocate new memory for temp_samples
                     temp_samples = (fftw_complex **)fftw_malloc(meta_data.num_antennas * sizeof(fftw_complex *));
@@ -858,6 +863,9 @@ int main() {
                             exit(EXIT_FAILURE);
                         }
                     } 
+                    printf("[Frequency Server] Allocated new temp_samples memory...\n");
+
+                    old_antenna_num = meta_data.num_antennas;
                 }
                 
                 // Read Meta Data 
