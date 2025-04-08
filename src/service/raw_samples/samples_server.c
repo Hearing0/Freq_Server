@@ -746,7 +746,6 @@ int main() {
     }
     add_ptr((void **)&clr_bands);
 
-    freq_band **clr_bands_storage = NULL;
     clr_bands_storage = (freq_band **)malloc(CLR_STORAGE_NUM * sizeof(freq_band *));
     if (clr_bands_storage == NULL) {
         perror("Error allocating memory for clr_bands_storage pointers");
@@ -981,11 +980,11 @@ int main() {
                 // printf("    fcenter: %d\n", meta_data.usrp_fcenter);
             }
 
-            if (*(int*) (beam_num_obj.shm_ptr) != 0) {
-                printf("[Frequency Server] Beam Number reading...\n");
-                read_single_int(&beam_num, beam_num_obj.shm_ptr);
-                // printf("    beam_num: %d\n", beam_num);
-            }
+            // if (*(int*) (beam_num_obj.shm_ptr) != 0) {
+            //     printf("[Frequency Server] Beam Number reading...\n");
+            //     read_single_int(&beam_num, beam_num_obj.shm_ptr);
+            //     // printf("    beam_num: %d\n", beam_num);
+            // }
 
             sem_post(sl_samples.sem);
 
@@ -1027,21 +1026,21 @@ int main() {
             // }
 
             // Process Clear Freq
-            printf("[Frequency Server] Starting Clear Freq Search...\n");
-            clear_freq_search(
-                temp_samples, 
-                clr_range,
-                beam_num,
-                sample_sep,
-                restricted_freq, 
-                restricted_num,
-                meta_data,
-                clr_bands                
-            );
-            // TODO: update_clr_table(clr_bands);
+            // printf("[Frequency Server] Starting Clear Freq Search...\n");
+            // clear_freq_search(
+            //     temp_samples, 
+            //     clr_range,
+            //     beam_num,
+            //     sample_sep,
+            //     restricted_freq, 
+            //     restricted_num,
+            //     meta_data,
+            //     clr_bands                
+            // );
+            // // TODO: update_clr_table(clr_bands);
 
-            for (int i = 0; i < CLR_BANDS_MAX; i++)
-                printf("Clear Freq Band[%d][%s]: | %dHz -- Noise: %f -- %dHz |\n", i, clr_bands[i].is_selected ? "Selected" : "Free", clr_bands[i].f_start, clr_bands[i].noise, clr_bands[i].f_end);
+            // for (int i = 0; i < CLR_BANDS_MAX; i++)
+            //     printf("Clear Freq Band[%d][%s]: | %dHz -- Noise: %f -- %dHz |\n", i, clr_bands[i].is_selected ? "Selected" : "Free", clr_bands[i].f_start, clr_bands[i].noise, clr_bands[i].f_end);
 
             
             
@@ -1055,29 +1054,11 @@ int main() {
             // printf("[Frequency Server] clrfreq_shm written...\n");
             // sem_post(sl_clrfreq.sem);
             // sem_post(sf_clrfreq.sem);
-            printf("[Frequency Server] Processed Samples successfully...\n");
-
-
-            // Log prior clear freq band sets
-            memcpy(clr_bands_storage[clr_storage_i], clr_bands, CLR_BANDS_MAX * sizeof(freq_band));
-            clr_storage_i++;
-            printf("[Frequency Server] Clr Freq Log Batch: %d/%d\n", clr_storage_i, CLR_STORAGE_NUM);
-            if (clr_storage_i >= CLR_STORAGE_NUM) {
-                write_clr_log_csv(clr_bands_storage, clr_storage_i);
-                clr_storage_i = 0;
-            }
+            printf("[Frequency Server] Stored Samples successfully...\n");
         } 
 
         // If Clear Freq flagged, process clear frequency
         else if (sem_trywait(sf_clrfreq.sem) == 0) {
-            if (clr_bands == NULL) {
-                printf("[Frequency Server] ERROR: Called for Clear Freq without prior Initialization\n");
-                printf("[Frequency Server] ERROR: There is likely a semaphore leak, please close and restart all related processes.\n");
-                cleanup();
-                return 0;
-            }
-            
-
             // Lock Write Clear Freq Data
             printf("[Frequency Server] Aquiring Semaphore Locks...\n");
             sem_wait(sl_clrfreq.sem);
@@ -1095,6 +1076,36 @@ int main() {
                 // printf("    beam_num: %d\n", beam_num);
             }
 
+            // Special: If first call for clear frequency bands
+            if (clr_bands == NULL) {
+                printf("[Frequency Server] First Call for Clear Freq\n");
+                printf("[Frequency Server] Processing first set...\n");
+                printf("[Frequency Server] Starting Clear Freq Search...\n");
+                clear_freq_search(
+                    temp_samples, 
+                    clr_range,
+                    beam_num,
+                    sample_sep,
+                    restricted_freq, 
+                    restricted_num,
+                    meta_data,
+                    clr_bands                
+                );
+                // TODO: update_clr_table(clr_bands);
+    
+                for (int i = 0; i < CLR_BANDS_MAX; i++) {
+                    printf("Clear Freq Band[%d][%s]: | %dHz -- Noise: %f -- %dHz |\n", i, clr_bands[i].is_selected ? "Selected" : "Free", clr_bands[i].f_start, clr_bands[i].noise, clr_bands[i].f_end);
+                }
+
+                // Log prior clear freq band sets
+                memcpy(clr_bands_storage[clr_storage_i], clr_bands, CLR_BANDS_MAX * sizeof(freq_band));
+                clr_storage_i++;
+                printf("[Frequency Server] Clr Freq Log Batch: %d/%d\n", clr_storage_i, CLR_STORAGE_NUM);
+                if (clr_storage_i >= CLR_STORAGE_NUM) {
+                    write_clr_log_csv(clr_bands_storage, clr_storage_i);
+                    clr_storage_i = 0;
+                }
+            }
 
             // Special: If current beam_num is not diff, write old clrfreq
             if (old_beam_num == beam_num) {
@@ -1106,9 +1117,43 @@ int main() {
             // General: Requires a beam-specific clrfreq
             else {
                 printf("[Frequency Server] Writing beam #%d clrfreq\n", beam_num);
-
-                // If beam_clr_storage is not ready, error!
+                old_antenna_num = beam_num;
+                
+                // If beam_clr_storage is not ready, process new clrfreq per unique beam request!
                 // if (bea)
+                if (clr_range == NULL) {
+                    printf("[Frequency Server] ERROR: No Clear Range provided for beam #%d\n", beam_num);
+                    printf("[Frequency Server] ERROR: There is likely a semaphore leak or incorrect order of function calls, please close and restart all related processes.\n");
+                    cleanup();
+                    return 0;
+                }
+                printf("[Frequency Server] Starting Clear Freq Search...\n");
+                clear_freq_search(
+                    temp_samples, 
+                    clr_range,
+                    beam_num,
+                    sample_sep,
+                    restricted_freq, 
+                    restricted_num,
+                    meta_data,
+                    clr_bands                
+                );
+                // TODO: update_clr_table(clr_bands);
+                
+                // Output Clear Freq Bands
+                for (int i = 0; i < CLR_BANDS_MAX; i++) {
+                    printf("Clear Freq Band[%d][%s]: | %dHz -- Noise: %f -- %dHz |\n", i, clr_bands[i].is_selected ? "Selected" : "Free", clr_bands[i].f_start, clr_bands[i].noise, clr_bands[i].f_end);
+                }
+                write_clrfreq_shm(clr_bands, clrfreq_obj.shm_ptr);
+
+                // Log prior clear freq band sets
+                memcpy(clr_bands_storage[clr_storage_i], clr_bands, CLR_BANDS_MAX * sizeof(freq_band));
+                clr_storage_i++;
+                printf("[Frequency Server] Clr Freq Log Batch: %d/%d\n", clr_storage_i, CLR_STORAGE_NUM);
+                if (clr_storage_i >= CLR_STORAGE_NUM) {
+                    write_clr_log_csv(clr_bands_storage, clr_storage_i);
+                    clr_storage_i = 0;
+                }
 
             }
             if (msync(clrfreq_obj.shm_ptr, CLR_BANDS_SHM_SIZE, MS_SYNC) == -1) {    // Synchronize data writes with program counter
