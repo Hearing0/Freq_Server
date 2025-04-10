@@ -801,13 +801,6 @@ int main() {
             sem_wait(sl_init.sem);
             printf("[Frequency Server] Initialization data read...\n");
 
-            // Read Sample Separation
-            if ( *(int*) (sample_sep_obj.shm_ptr) != 0) {
-                printf("[Frequency Server] Sample Separation reading...\n");
-                read_single_int(&sample_sep, sample_sep_obj.shm_ptr);
-                printf("    sample_sep: %d\n", sample_sep);
-            }
-
             // Read Meta Data
             // if ( *(double*) (meta_obj.shm_ptr) != 0) {
 
@@ -836,11 +829,7 @@ int main() {
                     printf("[Frequency Server] Meta Data successfully cached...\n");     
 
                     /// Sample Reallocation
-                    temp_sample_sizes[0] = meta_data.num_antennas;
-                    temp_sample_sizes[1] = samples_num;
                     // TODO: Record the num_antennas and calc mode to filter for 1min processing
-                    // samples_storage_sizes[1] = meta_data.num_antennas;
-                    // samples_storage_sizes[2] = samples_num;
 
                     // Set Size of Shared Memory Object
                     samples_obj.size = (meta_data.num_antennas) * samples_num * 2 * sizeof(int);
@@ -859,21 +848,13 @@ int main() {
                     printf("[Frequency Server] Samples Data successfully cached...\n");    
 
 
-                    // Temp_samples Reallocation
                     // Free previously allocated memory for temp_samples
-                    if (temp_samples != NULL) {
-                        for (int i = 0; i < old_antenna_num; i++) {
-                            if (temp_samples[i] != NULL) {
-                                fftw_free(temp_samples[i]);
-                                temp_samples[i] = NULL;
-                            }
-                        }
-                        fftw_free(temp_samples);
-                        temp_samples = NULL;
-                    }
+                    free_nested_fftw_ptr(temp_samples, 2, temp_sample_sizes);
+                    temp_sample_sizes[0] = meta_data.num_antennas;
+                    temp_sample_sizes[1] = samples_num;
                     printf("[Frequency Server] Freed old temp_samples memory...\n");
                     
-                    // Allocate new memory for temp_samples
+                    // Reallocate temp_samples
                     temp_samples = (fftw_complex **)fftw_malloc(meta_data.num_antennas * sizeof(fftw_complex *));
                     if (temp_samples == NULL) {
                         perror("Error reallocating memory for temp_samples pointers");
@@ -1073,8 +1054,16 @@ int main() {
             if (*(int*) (beam_num_obj.shm_ptr) != 0) {
                 printf("[Frequency Server] Beam Number reading...\n");
                 read_single_int(&beam_num, beam_num_obj.shm_ptr);
-                // printf("    beam_num: %d\n", beam_num);
+                printf("    beam_num: %d\n", beam_num);
             }
+
+            // Read Sample Separation
+            if ( *(int*) (sample_sep_obj.shm_ptr) != 0) {
+                printf("[Frequency Server] Sample Separation reading...\n");
+                read_single_int(&sample_sep, sample_sep_obj.shm_ptr);
+                printf("    sample_sep: %d\n", sample_sep);
+            }
+
 
             // Special: If first call for clear frequency bands
             if (clr_bands == NULL) {
@@ -1082,14 +1071,14 @@ int main() {
                 printf("[Frequency Server] Processing first set...\n");
                 printf("[Frequency Server] Starting Clear Freq Search...\n");
                 clear_freq_search(
-                    temp_samples, 
+                    temp_samples,
                     clr_range,
                     beam_num,
                     sample_sep,
-                    restricted_freq, 
+                    restricted_freq,
                     restricted_num,
                     meta_data,
-                    clr_bands                
+                    clr_bands   
                 );
                 // TODO: update_clr_table(clr_bands);
     
@@ -1176,7 +1165,6 @@ int main() {
             return 0;
         }
         
-        // sem_post(sf_processed.sem);
         printf("[Frequency Server] Processed Client successfully...\n");
 
         // Update 'old' values
