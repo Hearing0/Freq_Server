@@ -948,12 +948,6 @@ int main() {
             printf("[Frequency Server] Processing client sample data...\n");
             read_sample_shm(temp_samples, samples_obj.shm_ptr, meta_data.num_antennas, samples_num);
             printf("[Frequency Server] Samples done...\n");
-            
-            if (*(int*) (clr_range_obj.shm_ptr) != 0) {
-                printf("[Frequency Server] Clear Range reading...\n");
-                read_int(clr_range, clr_range_obj.shm_ptr, 2);
-                // printf("    clr_range: %d -- %d\n", clr_range[0], clr_range[1]);
-            }
 
             if (*(int*) (fcenter_obj.shm_ptr) != 0) {
                 printf("[Frequency Server] Freq Center reading...\n");
@@ -1064,6 +1058,11 @@ int main() {
                 printf("    sample_sep: %d\n", sample_sep);
             }
 
+            if (*(int*) (clr_range_obj.shm_ptr) != 0) {
+                printf("[Frequency Server] Clear Range reading...\n");
+                read_int(clr_range, clr_range_obj.shm_ptr, 2);
+                // printf("    clr_range: %d -- %d\n", clr_range[0], clr_range[1]);
+            }
 
             // Special: If first call for clear frequency bands
             if (clr_bands == NULL) {
@@ -1110,12 +1109,6 @@ int main() {
                 
                 // If beam_clr_storage is not ready, process new clrfreq per unique beam request!
                 // if (bea)
-                if (clr_range == NULL) {
-                    printf("[Frequency Server] ERROR: No Clear Range provided for beam #%d\n", beam_num);
-                    printf("[Frequency Server] ERROR: There is likely a semaphore leak or incorrect order of function calls, please close and restart all related processes.\n");
-                    cleanup();
-                    return 0;
-                }
                 printf("[Frequency Server] Starting Clear Freq Search...\n");
                 clear_freq_search(
                     temp_samples, 
