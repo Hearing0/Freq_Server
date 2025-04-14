@@ -761,7 +761,7 @@ int main() {
 
     int* clr_range = malloc(2 * sizeof(int));
     add_ptr((void **)&clr_range);
-    int beam_num = -1;
+    int beam_num = 0;
     int old_beam_num = -1;
     int sample_sep = -1;
     int old_antenna_num = ANTENNA_NUM;
@@ -1037,7 +1037,6 @@ int main() {
             // Lock Write Clear Freq Data
             printf("[Frequency Server] Aquiring Semaphore Locks...\n");
             sem_wait(sl_clrfreq.sem);
-            sem_wait(sl_samples.sem);
             printf("[Frequency Server] Writing clear frequency data to Shared Memory...\n");
 
 
@@ -1058,6 +1057,7 @@ int main() {
                 printf("    sample_sep: %d\n", sample_sep);
             }
 
+            // Read Clear Range
             if (*(int*) (clr_range_obj.shm_ptr) != 0) {
                 printf("[Frequency Server] Clear Range reading...\n");
                 read_int(clr_range, clr_range_obj.shm_ptr, 2);
@@ -1144,7 +1144,6 @@ int main() {
             
 
             printf("[Frequency Server] clrfreq_shm written...\n");
-            sem_post(sl_samples.sem);
             sem_post(sl_clrfreq.sem);
             sem_post(sf_processed.sem);
             printf("[Frequency Server] Processed Clear Freq Request successfully...\n");
