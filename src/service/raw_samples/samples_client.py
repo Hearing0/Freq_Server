@@ -534,6 +534,8 @@ class ClearFrequencyService():
         """ Waits for client requests, then processes server data, writes client 
             data, and requests server to process new data. When process is 
             terminated, the try/finally block cleans up.
+            
+            Note: fcenter and meta_data can be None after being passed as arguments on the first send_samples() method call.
         """
         input_data = [
             raw_samples, 
