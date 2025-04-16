@@ -471,8 +471,8 @@ class ClearFrequencyService():
     def premap_shm(self, meta_data=None):
         """Premaps all shared memory objects' pointers to their memory addresses.  
         """
-        # If no SHM mapping, map all SHM objects
-        if self.shm_objects[0]['shm_ptr'] == None:
+        # If no SHM mapping and meta_data exist, map all SHM objects
+        if self.shm_objects[0]['shm_ptr'] == None and meta_data != None:
             
             ## Check for Premapped antenna num
             # Map shared memory object pointer for antenna num
@@ -634,7 +634,7 @@ class ClearFrequencyService():
         print(f"[clearFrequencyService] Active clients count: {active_clients}\n")
         
         try:
-            self.premap_shm()
+            self.premap_shm(meta_data)
                                         
             # Await for a Client Request
             print("[clearFrequencyService] Awaiting Client Request...\n")
