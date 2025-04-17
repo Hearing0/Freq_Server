@@ -975,22 +975,22 @@ while (True):
         meta_data=meta_data
     )
     CFS.request_clr_freq(
-        beam_num=1,
+        beam_num=0,
         clr_range=clear_freq_range, 
         sample_sep=340,     # only necesary on first request or if changing
     )
 
-    # Test dynamic SHM reallocation due to antenna resizing
-    if trimmed_samples is not None:
-        meta_data['antenna_list'] = meta_ant_partial
-        CFS.send_samples(
-            trimmed_samples, 
-            fcenter=12000,
-            meta_data=meta_data
-        )
+    # # Test dynamic SHM reallocation due to antenna resizing
+    # if trimmed_samples is not None:
+    #     meta_data['antenna_list'] = meta_ant_partial
+    #     CFS.send_samples(
+    #         trimmed_samples, 
+    #         fcenter=12000,
+    #         meta_data=meta_data
+    #     )
         
-        # break
+    #     # break
 
-        CFS.request_clr_freq(
-            beam_num=1,
-        )
+    #     CFS.request_clr_freq(
+    #         beam_num=1,
+    #     )
