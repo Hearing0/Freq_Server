@@ -549,7 +549,6 @@ void calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_meta_data
     log_trace("freed allocated fftw & its ptrs");
     free(avg_freq_vector);
     free(avg_spectrum);
-    free(freq_vector);
     log_trace("freed allocated ptrs ");
 }
 
@@ -606,7 +605,7 @@ void phasing_and_beamforming(double beam_angle, int *clear_freq_range, sample_me
         beamformed_samples[i] = real_sum + I * imag_sum;
 
         if (VERBOSE && i == 2499)
-            printf("beamformed[%d]    = %f + %fi\n", i, creal(beamformed_samples[i]), cimag(beamformed_samples[i]));
+            log_trace("beamformed[%d]    = %f + %fi\n", i, creal(beamformed_samples[i]), cimag(beamformed_samples[i]));
     }
 }
 
@@ -647,7 +646,7 @@ void process_all_beam_spectra(
 
     // Ensure inputs exist
     if (!raw_samples || !meta_data || !antennas) {
-        fprintf(stderr, "Error: Null input detected in process_all_beam_spectra().\n");
+        log_error("Error: Null input detected in process_all_beam_spectra().\n");
         exit(EXIT_FAILURE);
     }
 
