@@ -2,6 +2,7 @@ import mmap
 import os
 import struct
 import time
+import timeit
 import posix_ipc
 import pickle       # To read in pickle test samples
 import numpy as np
@@ -152,7 +153,7 @@ class ClearFrequencyService():
             self.cleanup_shm()
             
         
-    def create_shm_obj(self, name, size, elem_num=1):
+    def create_shm_obj(self, name: str, size: int, elem_num= 1):
         """ Returns a dictionary containing pre-filled fields for shared memory (SHM) object data.
             
         Args:
@@ -176,7 +177,7 @@ class ClearFrequencyService():
             'elem_num': elem_num
         }
         
-    def create_semaphore(self, name):
+    def create_semaphore(self, name: str):
         return {
             'name': name,
             'sem':  self.initialize_semaphore(name)
@@ -350,8 +351,14 @@ class ClearFrequencyService():
             ValueError: If the variable doesn't contain either ints or floats.
         """
         try:    
+            # Debug: Record start time
+            start_time = time.time()
+            
             flattened_data = []
             if atype == 'complex':
+                # TODO: Flatten with numpy and interpret as ints
+                # flattened_data = np.array(array_data).flatten().astype(int, copy=True)         
+                
                 # If complex, flatten and separate real and imaginary parts
                 for antenna_sample in array_data:  
                     # print("[Frequency Client] sample_arr len: ", len(antenna_sample))
@@ -365,6 +372,18 @@ class ClearFrequencyService():
                         # print("[Frequency Client] Flattening samples: ", sample)
                         # print("[Frequency Client]                   : ", flattened_data[-2])
                         # print("[Frequency Client]                   : ", flattened_data[-1])
+                
+                # flattened_data = bytes(array_data.astype(np.complex64))
+
+                # print("[Frequency Client] new_data len of: ", len(flattened_data))
+                # print("[Frequency Client] Writing data:\n", flattened_data[:1], "...")             
+                    
+                # obj['shm_ptr'].seek(0)
+                # # obj['shm_ptr'].write(struct.pack('i' * obj['elem_num'], *flattened_data)) 
+                # obj['shm_ptr'].write(flattened_data) 
+                
+                return
+            
             elif atype == 'meta':
                 for i in range (1, len(array_data)):
                     flattened_data.append(array_data[i])
@@ -390,8 +409,9 @@ class ClearFrequencyService():
                     raise ValueError(f"An unexpected value occured: {list_of_lists}")
             
             
-            dtype = 'i'
             # Determine dtype for Packing
+            print(f"flattened array type: {type(flattened_data)}")
+            dtype = 'i'
             if atype == 'meta':
                 dtype = 'd'
             elif atype == "sid":
@@ -400,7 +420,6 @@ class ClearFrequencyService():
                 dtype = self.detect_dtype(flattened_data)
             print(f"dtype: {dtype}, elem_num: {obj['elem_num']}, ")
                 
-            print(f"flattened array type: {type(flattened_data)}")
                 
             # Pack and write data
             if type(flattened_data) is list or type(flattened_data) is str:  
@@ -427,8 +446,18 @@ class ClearFrequencyService():
         
         
         except AttributeError:
+            # Display error if element size is incorrect
             print("[Frequency Client] ERROR: Element Size is incorrect. send()'s parameters were likely not assigned properly. Please verify...")
-
+            
+        
+        finally:
+            # Debug: Print time to write
+            end_time = time.time()
+            elapsed_time = end_time - start_time
+            
+            # print(f"[Frequency Client] Time to write {obj['elem_num']} elements: {elapsed_time:.6f} seconds")
+            
+            
     def read_m_data(self, obj):
         """Reads in data from the shared memory file descriptor.
 
@@ -702,11 +731,13 @@ class ClearFrequencyService():
                 self.sl_samples['sem'].acquire()
 
                 # Write Sample data
-                self.write_data(self.shm_objects[0], raw_samples, 'complex')
+                print(f"[Frequency Client] Data Write Progress: {1}/{self.SAMPLE_PARAM_NUM} {self.shm_objects[0]['name']}")
+                sample_time = timeit.timeit(lambda: self.write_data(self.shm_objects[0], raw_samples, 'complex'), number=10000)/10000
+                print(f"[Frequency Client] AVG Time to write {self.shm_objects[0]['elem_num']} elements: {sample_time:.6f} seconds")
                                 
                 # If Sample-relevant Data given, write it                
                 for i in range(1, self.SAMPLE_PARAM_NUM):
-                    print(f"[Frequency Client] Data Write Progress: {i}/{self.SAMPLE_PARAM_NUM - 1} {self.shm_objects[i]['name']}")
+                    print(f"[Frequency Client] Data Write Progress: {i}/{self.SAMPLE_PARAM_NUM} {self.shm_objects[i]['name']}")
                     
                     # General: Write updated input data 
                     if input_data[i] is not None:
@@ -950,10 +981,13 @@ clear_freq_range = [ int(12 * pow(10,6)), int(12.5 * pow(10,6)) ]
 meta_ant_full = meta_data['antenna_list']
 meta_ant_partial = [0,2] 
 trimmed_samples = raw_samples[:2]         #HACK: writes only first two antenna's samples
-print(f"raw_samples size: {len(raw_samples) * len(raw_samples[0])}")
-print(f"raw_samples shape: {len(raw_samples)} x {len(raw_samples[0])} x {2} (antenna_num x sample_num x complex)")
-print(f"trimmed_s size: {len(trimmed_samples) * len(trimmed_samples[0])}")
-print(f"trimmed_samples shape: {len(trimmed_samples)} x {len(trimmed_samples[0])} x {2} (antenna_num x sample_num x complex)")
+
+print(f"samples: {raw_samples[:2][:10]}")
+# print(f"raw_samples size: {len(raw_samples) * len(raw_samples[0])}")
+# print(f"raw_samples shape: {len(raw_samples)} x {len(raw_samples[0])} x {2} (antenna_num x sample_num x complex)")
+# print(f"trimmed_s size: {len(trimmed_samples) * len(trimmed_samples[0])}")
+# print(f"trimmed_samples shape: {len(trimmed_samples)} x {len(trimmed_samples[0])} x {2} (antenna_num x sample_num x complex)")
+
 # CFS.flag_debug(trimmed_samples, 
 #                 clr_range=clear_freq_range, 
 #                 fcenter=12000,
@@ -966,19 +1000,42 @@ print(f"trimmed_samples shape: {len(trimmed_samples)} x {len(trimmed_samples[0])
 # CFS.flag_debug(t1=1, t2=1)
 # while (True):    CFS.flag_debug(t3=1)
 
+def flatten_raw_into_int_bytes(arr):
+    """Stack and flatten a 3D array into a 2D array.
+    
+    Args:
+        arr (np.ndarray): Input 3D array.
+        
+    Returns:
+        np.ndarray: Flattened 2D array.
+    """
+    return np.stack((arr.real, arr.imag), axis=-1).reshape(-1, 2)
 
-while (True):   
-    meta_data['antenna_list'] = meta_ant_full
-    CFS.send_samples(
-        raw_samples, 
-        fcenter=12000,
-        meta_data=meta_data
-    )
-    CFS.request_clr_freq(
-        beam_num=0,
-        clr_range=clear_freq_range, 
-        sample_sep=340,     # only necesary on first request or if changing
-    )
+# Test stack flattening for raw samples
+stack_flat_samples_1 = np.stack((raw_samples.real, raw_samples.imag), axis=-1).reshape(-1, 2)
+print(f"stack_flat_samples_1 shape: {stack_flat_samples_1.shape}")
+print(f"stack_flat_samples_1: {stack_flat_samples_1[:10]}")
+
+
+
+# Test flatten speed
+# timeit.timeit()
+
+
+# while (True):   
+#     meta_data['antenna_list'] = meta_ant_full
+#     CFS.send_samples(
+#         raw_samples, 
+#         fcenter=12000,
+#         meta_data=meta_data
+#     )
+#     CFS.request_clr_freq(
+#         beam_num=0,
+#         clr_range=clear_freq_range, 
+#         sample_sep=340,     # only necesary on first request or if changing
+#     )
+    
+#     break
 
     # # Test dynamic SHM reallocation due to antenna resizing
     # if trimmed_samples is not None:
