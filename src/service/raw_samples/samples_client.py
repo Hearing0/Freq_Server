@@ -91,6 +91,7 @@ class ClearFrequencyService():
     old_meta_data = [[], 0, 0.0, 0.0]
     old_smsep = 0
     
+    
     def __init__(self, sid = 'lab'):
         # Process Site ID during Sample Send 
         ClearFrequencyService.sid = sid
@@ -356,34 +357,23 @@ class ClearFrequencyService():
             
             flattened_data = []
             if atype == 'complex':
-                # TODO: Flatten with numpy and interpret as ints
-                # flattened_data = np.array(array_data).flatten().astype(int, copy=True)         
+                # Convert to np array
+                array_data_np = np.array(array_data, dtype=np.complex64)
                 
-                # If complex, flatten and separate real and imaginary parts
-                for antenna_sample in array_data:  
-                    # print("[Frequency Client] sample_arr len: ", len(antenna_sample))
-                    
-                    # TODO: Time trial w/ zip(int(sample.real), int(sample.imag))
-                    for sample in antenna_sample:
-                        flattened_data.append(int(sample.real))
-                        flattened_data.append(int(sample.imag))
-                        
-                        # Debug: Display samples
-                        # print("[Frequency Client] Flattening samples: ", sample)
-                        # print("[Frequency Client]                   : ", flattened_data[-2])
-                        # print("[Frequency Client]                   : ", flattened_data[-1])
+                # Flatten and interleave real and imaginary parts as integers
+                interleaved_data = np.empty(array_data_np.size * 2, dtype=np.int32)
+                interleaved_data[0::2] = array_data_np.real.astype(np.int32).ravel()
+                interleaved_data[1::2] = array_data_np.imag.astype(np.int32).ravel()
                 
-                # flattened_data = bytes(array_data.astype(np.complex64))
-
-                # print("[Frequency Client] new_data len of: ", len(flattened_data))
-                # print("[Frequency Client] Writing data:\n", flattened_data[:1], "...")             
-                    
-                # obj['shm_ptr'].seek(0)
-                # # obj['shm_ptr'].write(struct.pack('i' * obj['elem_num'], *flattened_data)) 
-                # obj['shm_ptr'].write(flattened_data) 
+                # Print set per 2500 elemnents (till 5 set) in interleaved_data to verify
+                for i in range(0, 5):
+                    print(f"[Frequency Client] interleaved_data: ", interleaved_data[i * 5000:(i + 1) * 5000], "...")
+                
+                # Write directly to shared memory
+                obj['shm_ptr'].seek(0)
+                obj['shm_ptr'].write(interleaved_data.tobytes())
                 
                 return
-            
             elif atype == 'meta':
                 for i in range (1, len(array_data)):
                     flattened_data.append(array_data[i])
@@ -420,6 +410,7 @@ class ClearFrequencyService():
                 dtype = self.detect_dtype(flattened_data)
             print(f"dtype: {dtype}, elem_num: {obj['elem_num']}, ")
                 
+            print(f"flattened array type: {type(flattened_data)}")
                 
             # Pack and write data
             if type(flattened_data) is list or type(flattened_data) is str:  
@@ -445,19 +436,20 @@ class ClearFrequencyService():
                 obj['shm_ptr'].write(struct.pack(dtype * 1, flattened_data))
         
         
-        except AttributeError:
+        except AttributeError as e:
             # Display error if element size is incorrect
             print("[Frequency Client] ERROR: Element Size is incorrect. send()'s parameters were likely not assigned properly. Please verify...")
-            
+            print(f"AttributeError: {e}")
+            print(f"Object: {obj}, Attributes: {dir(obj)}")
+            raise
         
         finally:
             # Debug: Print time to write
             end_time = time.time()
             elapsed_time = end_time - start_time
             
-            # print(f"[Frequency Client] Time to write {obj['elem_num']} elements: {elapsed_time:.6f} seconds")
-            
-            
+            print(f"[Frequency Client] Time to write {obj['elem_num']} elements: {elapsed_time:.6f} seconds")
+                    
     def read_m_data(self, obj):
         """Reads in data from the shared memory file descriptor.
 
@@ -537,105 +529,7 @@ class ClearFrequencyService():
                 print(f"Mapping {obj['name']}")
                 obj['shm_ptr'] = mmap.mmap(obj['shm_fd'], obj['size'], mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE) 
     
-    # def update_init(self, sample_sep=None, meta_data=None):
-    #     """Updates initialization variables (sample_sep, meta_data) for Clear Frequency Service. Note that it requests a server response on call end.
-    #     """
-        
-    #     meta_data_list = [
-    #                     meta_data['antenna_list'],
-    #                     meta_data['number_of_samples'],
-    #                     meta_data['x_spacing'],
-    #                     meta_data['usrp_rf_rate'],
-    #                 ]
-        
-    #     # Special: Halt all future ClearFreqService
-    #     if self.soft_kill is True:
-    #         return
-                
-    #     # Get in Queue
-    #     active_clients = self.increment_active_clients()
-    #     print(f"[clearFrequencyService] Active clients count: {active_clients}\n")
-        
-    #     try:
-    #         self.premap_shm()
-                                        
-    #         # Await for a Client Request
-    #         print("[clearFrequencyService] Awaiting Client Request...\n")
-    #         self.sf_client['sem'].acquire()
-    #         print("[clearFrequencyService] Acquired Client Request...")
-            
-    #         # Check & Send Initialization Data
-    #         if sample_sep is not None or meta_data is not None:
-    #             print("[clearFrequencyService] Requesting Initialization Semaphore...")
-    #             self.sl_init['sem'].acquire()
-    #             print("[clearFrequencyService] Initialization Semaphore Acquired...")
-                
-    #             # If sample separation present, send
-    #             if sample_sep is not None:                
-    #                 print(f"[Frequency Client] Data Write Progress: {self.shm_objects[4]['name']}")
-    #                 self.write_data(self.shm_objects[4], sample_sep)
-    #                 self.smsep = sample_sep
-                                
-    #             # If meta_data present and has changed
-    #             if meta_data is not None and self.old_meta_data != meta_data_list:
-    #                 self.old_meta_data = meta_data_list
-    #                 shm_ant_num = self.read_m_data(self.shm_objects[7])
-                    
-    #                 # If antenna length has changed, send, set, and sync with server
-    #                 if self.cur_antenna_num != len(meta_data['antenna_list']):
-    #                     print(f"[Frequency Client] Antenna_num changed. Reallocating memory")
-    #                     self.cur_antenna_num = len(meta_data['antenna_list'])
-                        
-    #                     # Send
-    #                     print(f"[Frequency Client] Data Write Progress: {self.shm_objects[7]['name']}")
-    #                     self.write_data(self.shm_objects[7], len(meta_data['antenna_list']))
-                                                
-    #                     # Reallocate meta SHM
-    #                     meta_obj = self.shm_objects[6]
-    #                     meta_obj['elem_num'] = len(meta_data['antenna_list']) + self.META_ELEM
-    #                     meta_obj['size'] = meta_obj['elem_num'] * self.DOUBLE_SIZE
-    #                     os.ftruncate(meta_obj['shm_fd'], meta_obj['size'])
-    #                     meta_obj['shm_ptr'] = mmap.mmap(meta_obj['shm_fd'], meta_obj['size'], mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE)
-                        
-    #                     # Reallocate samples SHM
-    #                     samples_obj = self.shm_objects[0]
-    #                     samples_obj['elem_num'] = len(meta_data['antenna_list']) * self.SAMPLES_NUM * 2
-    #                     samples_obj['size'] = samples_obj['elem_num'] * self.INT_SIZE
-    #                     os.ftruncate(samples_obj['shm_fd'], samples_obj['size'])
-    #                     samples_obj['shm_ptr'] = mmap.mmap(samples_obj['shm_fd'], samples_obj['size'], mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE)
-                    
-    #                 # If server's antenna num is outdated, update it
-    #                 elif shm_ant_num != self.cur_antenna_num:
-    #                     # Send
-    #                     print(f"[Frequency Client] Data Write Progress: {self.shm_objects[7]['name']}")
-    #                     self.write_data(self.shm_objects[7], len(meta_data['antenna_list']))
-                        
-    #                 print(f"[Frequency Client] Data Write Progress: {self.shm_objects[6]['name']}")
-                    
-    #                 # Rearrange meta_data ordering
-    #                 self.write_data(self.shm_objects[6], meta_data_list, 'meta')
-                    
-    #             # Write Site ID (SID)
-    #             print(f"[Frequency Client] Data Write Progress: {self.shm_objects[9]['name']}")
-    #             print(f"    len of objects list is {len(self.shm_objects)}")
-    #             self.write_data(self.shm_objects[9], self.sid, 'sid')
-                    
-    #             self.sl_init['sem'].release()
-    #             self.sf_init['sem'].release()
-    #             print("[clearFrequencyService] Initialization Semaphore Released ...")
-    #             print("[clearFrequencyService] Initialization Flag raised ...")
-            
-    #         self.sf_server['sem'].release()
-                                                        
-    #     except KeyboardInterrupt:
-    #         print("[clearFrequencyService] Keyboard interrupt received. Exiting...")
-    #     except posix_ipc.ExistentialError or ValueError or AttributeError:
-    #             print("[clearFrequencyService] Shared memory has been delinked. Exiting...")
-    #     finally:
-    #         active_clients = self.decrement_active_clients()
-                
-    #     return
-        
+    
     def send_samples(self, raw_samples, fcenter=None, meta_data=None):
         """ Waits for client requests, then processes server data, writes client 
             data, and requests server to process new data. When process is 
@@ -731,9 +625,7 @@ class ClearFrequencyService():
                 self.sl_samples['sem'].acquire()
 
                 # Write Sample data
-                print(f"[Frequency Client] Data Write Progress: {1}/{self.SAMPLE_PARAM_NUM} {self.shm_objects[0]['name']}")
-                sample_time = timeit.timeit(lambda: self.write_data(self.shm_objects[0], raw_samples, 'complex'), number=10000)/10000
-                print(f"[Frequency Client] AVG Time to write {self.shm_objects[0]['elem_num']} elements: {sample_time:.6f} seconds")
+                self.write_data(self.shm_objects[0], raw_samples, 'complex')
                                 
                 # If Sample-relevant Data given, write it                
                 for i in range(1, self.SAMPLE_PARAM_NUM):
@@ -983,6 +875,7 @@ meta_ant_partial = [0,2]
 trimmed_samples = raw_samples[:2]         #HACK: writes only first two antenna's samples
 
 print(f"samples: {raw_samples[:2][:10]}")
+
 # print(f"raw_samples size: {len(raw_samples) * len(raw_samples[0])}")
 # print(f"raw_samples shape: {len(raw_samples)} x {len(raw_samples[0])} x {2} (antenna_num x sample_num x complex)")
 # print(f"trimmed_s size: {len(trimmed_samples) * len(trimmed_samples[0])}")
@@ -1011,10 +904,10 @@ def flatten_raw_into_int_bytes(arr):
     """
     return np.stack((arr.real, arr.imag), axis=-1).reshape(-1, 2)
 
-# Test stack flattening for raw samples
-stack_flat_samples_1 = np.stack((raw_samples.real, raw_samples.imag), axis=-1).reshape(-1, 2)
-print(f"stack_flat_samples_1 shape: {stack_flat_samples_1.shape}")
-print(f"stack_flat_samples_1: {stack_flat_samples_1[:10]}")
+# # Test stack flattening for raw samples
+# stack_flat_samples_1 = np.stack((raw_samples.real, raw_samples.imag), axis=-1).reshape(-1, 2)
+# # print(f"stack_flat_samples_1 shape: {stack_flat_samples_1.shape}")
+# print(f"stack_flat_samples_1: {stack_flat_samples_1[:10]}")
 
 
 
@@ -1022,20 +915,20 @@ print(f"stack_flat_samples_1: {stack_flat_samples_1[:10]}")
 # timeit.timeit()
 
 
-# while (True):   
-#     meta_data['antenna_list'] = meta_ant_full
-#     CFS.send_samples(
-#         raw_samples, 
-#         fcenter=12000,
-#         meta_data=meta_data
-#     )
-#     CFS.request_clr_freq(
-#         beam_num=0,
-#         clr_range=clear_freq_range, 
-#         sample_sep=340,     # only necesary on first request or if changing
-#     )
+while (True):   
+    meta_data['antenna_list'] = meta_ant_full
+    CFS.send_samples(
+        raw_samples, 
+        fcenter=12000,
+        meta_data=meta_data
+    )
+    CFS.request_clr_freq(
+        beam_num=0,
+        clr_range=clear_freq_range, 
+        sample_sep=340,     # only necesary on first request or if changing
+    )
     
-#     break
+    break
 
     # # Test dynamic SHM reallocation due to antenna resizing
     # if trimmed_samples is not None:
