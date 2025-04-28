@@ -1108,47 +1108,39 @@ int main() {
             }
 
 
-            // Special: If current beam_num is not diff and clr_band is ready, write old clrfreq
-            if (old_beam_num == beam_num && (clr_bands[0].noise != 0 && clr_bands[2].noise != 0)) {
-                log_info( "Writing a prior client's clrfreq\n");
-                for (int i = 0; i < CLR_BANDS_MAX; i++)
-                    log_info("Clear Freq Band[%d][%s]: | %dHz -- Noise: %f -- %dHz |", i, clr_bands[i].is_selected ? "Selected" : "Free", clr_bands[i].f_start, clr_bands[i].noise, clr_bands[i].f_end);
-                write_clrfreq_shm(clr_bands, clrfreq_obj.shm_ptr);
-            } 
             // General: Requires a beam-specific clrfreq
-            else {
-                log_info( "Processing beam #%d clrfreq", beam_num);
-                old_beam_num = beam_num;
+            log_info( "Processing beam #%d clrfreq", beam_num);
+            
+            // If beam_clr_storage is not ready, process new clrfreq per unique beam request!
+            // if (bea)
+            log_info( "Starting Clear Freq Search...");
+            clear_freq_search(
+                temp_samples, 
+                clr_range,
+                beam_num,
+                sample_sep,
+                restricted_freq, 
+                restricted_num,
+                meta_data,
+                clr_bands                
+            );
+            // TODO: update_clr_table(clr_bands);
+            
+            write_clrfreq_shm(clr_bands, clrfreq_obj.shm_ptr);
+            
+            // Output Clear Freq Bands
+            for (int i = 0; i < CLR_BANDS_MAX; i++) {
+                log_debug("Clear Freq Band[%d][%s]: | %dHz -- Noise: %f -- %dHz |", i, clr_bands[i].is_selected ? "Selected" : "Free", clr_bands[i].f_start, clr_bands[i].noise, clr_bands[i].f_end);
                 
-                // If beam_clr_storage is not ready, process new clrfreq per unique beam request!
-                // if (bea)
-                log_info( "Starting Clear Freq Search...");
-                clear_freq_search(
-                    temp_samples, 
-                    clr_range,
-                    beam_num,
-                    sample_sep,
-                    restricted_freq, 
-                    restricted_num,
-                    meta_data,
-                    clr_bands                
-                );
-                // TODO: update_clr_table(clr_bands);
-                
-
-                // Output Clear Freq Bands
-                for (int i = 0; i < CLR_BANDS_MAX; i++) {
-                    log_debug("Clear Freq Band[%d][%s]: | %dHz -- Noise: %f -- %dHz |", i, clr_bands[i].is_selected ? "Selected" : "Free", clr_bands[i].f_start, clr_bands[i].noise, clr_bands[i].f_end);
-                    
-                    // Flag abnormal clr_bands in log
-                    if (clr_bands[i].f_start == 0 || clr_bands[i].f_end == 0 || clr_bands[i].noise == 0) {
-                        log_error("ERROR: Clear Freq Band[%d] is abnornal", i);
-                        log_error("ERROR: There is likely a semaphore leak or error in CFS order of operations, please close and restart all related processes.");
-                    }
+                // Flag abnormal clr_bands in log
+                if (clr_bands[i].f_start == 0 || clr_bands[i].f_end == 0 || clr_bands[i].noise == 0) {
+                    log_error("ERROR: Clear Freq Band[%d] is abnornal", i);
+                    log_error("ERROR: There is likely a semaphore leak or error in CFS order of operations, please close and restart all related processes.");
                 }
-                write_clrfreq_shm(clr_bands, clrfreq_obj.shm_ptr);
-
-                
+            }
+            
+            // General: If request is unique, log clrfreq
+            if (old_beam_num != beam_num && (clr_bands[0].noise == 0 && clr_bands[2].noise == 0)) {
                 // Log clear freq band sets
                 memcpy(clr_bands_storage[clr_storage_i], clr_bands, CLR_BANDS_MAX * sizeof(freq_band));
                 clr_storage_i++;
@@ -1158,6 +1150,9 @@ int main() {
                     clr_storage_i = 0;
                 }
             }
+            
+            old_beam_num = beam_num;
+            
             if (msync(clrfreq_obj.shm_ptr, CLR_BANDS_SHM_SIZE, MS_SYNC) == -1) {    // Synchronize data writes with program counter
                 log_fatal( "msync failed");
                 perror("msync failed");
