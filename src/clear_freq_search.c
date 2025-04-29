@@ -629,15 +629,17 @@ void process_all_beamformed_spectras(
         freq_band *restricted_bands, 
         int restrict_num,
         sample_meta_data *meta_data,
-        int *beam_total,
+        int beam_total,
+        bool active_antennas[],
         fftw_complex **beamformed_spectra
     ) {
+    log_trace("Entered process_all_beamformed_spectras()...");
+
+    // Constants
     const char *config_path = "../SuperDARN_UHD_Server/array_config.ini";              //"../Freq_Server/utils/clear_freq_input/array_config.ini";
 
     // Initial Data Variables
-    int beam_num;
     double beam_sep;
-    freq_data freq_data;
     // int **sample_re = NULL;
     // int **sample_im = NULL;
     int num_samples = meta_data->number_of_samples;
@@ -650,21 +652,23 @@ void process_all_beamformed_spectras(
         exit(EXIT_FAILURE);
     }
 
+    log_trace("Inputs exist in process_all_beam_spectra()");
 
     // Allocate memory for Variables    
-    fftw_complex **phasing_vector = (fftw_complex**) fftw_malloc(sizeof(fftw_complex) * beam_num);
-    fftw_complex **beamformed_samples = (fftw_complex**) fftw_malloc(sizeof(fftw_complex) * beam_num);
-    fftw_complex *fft_in;
-    fftw_complex *fft_out;
-    for (int cur_beam = 0; cur_beam < beam_num; cur_beam++) {
-        phasing_vector[cur_beam]     = (fftw_complex*) fftw_malloc(num_samples * sizeof(int));
-        beamformed_samples[cur_beam] = (fftw_complex*) fftw_malloc(num_samples * sizeof(int));
+    fftw_complex **phasing_vector = (fftw_complex**) fftw_malloc(sizeof(fftw_complex*) * beam_total);
+    fftw_complex **beamformed_samples = (fftw_complex**) fftw_malloc(sizeof(fftw_complex*) * beam_total);
+    fftw_complex *fft_out = (fftw_complex*) fftw_malloc(num_samples * sizeof(fftw_complex));
+    for (int cur_beam = 0; cur_beam < beam_total; cur_beam++) {
+        phasing_vector[cur_beam]     = (fftw_complex*) fftw_malloc(num_samples * sizeof(fftw_complex));
+        beamformed_samples[cur_beam] = (fftw_complex*) fftw_malloc(num_samples * sizeof(fftw_complex));
         // beam_fft_spectrum[cur_beam]       = (fftw_complex*) fftw_malloc(num_samples * sizeof(int));
     }
     if (!phasing_vector || !beamformed_samples) {
         perror("Error: Failed to allocate process_all_beam_spectra() memory.\n");
         exit(EXIT_FAILURE);
     }
+
+    log_trace("Allocated memory for phasing_vector and beamformed_samples");
 
     // Scale parameters to Hz and ms
     smsep = smsep / 1000000;
@@ -675,40 +679,46 @@ void process_all_beamformed_spectras(
 
 
     // Beam Angle Calculation
-    read_array_config(config_path, &beam_num, &beam_sep);
-    beam_total = &beam_num; //TODO: Check that this is correct
-    double beam_angle[beam_num];
-    for (int cur_beam = 0; cur_beam < beam_num; cur_beam++) {
-        beam_angle[cur_beam] = calc_beam_angle(beam_num, cur_beam, beam_sep);  
+    read_array_config(config_path, &beam_total, &beam_sep);
+    double beam_angle[beam_total];
+    for (int cur_beam = 0; cur_beam < beam_total; cur_beam++) {
+        beam_angle[cur_beam] = calc_beam_angle(beam_total, cur_beam, beam_sep);  
     }
+    log_trace("Beam angles calculated");
     
+
     // Phasing and Beamforming Calculation
-    for (int cur_beam = 0; cur_beam < beam_num; cur_beam++) {
+    for (int cur_beam = 0; cur_beam < beam_total; cur_beam++) {
         phasing_and_beamforming(
             beam_angle[cur_beam], clear_freq_range, meta_data, phasing_vector[cur_beam], antennas, num_samples, raw_samples, beamformed_samples[cur_beam]
             // if (VERBOSE) {for (int i = 0; i < num_samples; i++) if (i < 5) printf("beamformed[%d]    = %f + %fi\n", i, creal(beamformed_samples[i]), cimag(beamformed_samples[i]));}
         );
     }
-
-
-    // FFT Beamformed Samples
-    // TODO: Optimize fft_plan usage; Long-term fft_plan storage (create and store in samples_server.c)
-    fftw_plan fft_plan = fftw_plan_dft_1d(num_samples, fft_in, fft_out, FFTW_FORWARD, FFTW_ESTIMATE);
-    for (int cur_beam = 0; cur_beam < beam_num; cur_beam++) {
-        // Set the input and output for the FFT
-        fft_in = beamformed_samples[cur_beam];
-        fft_out = beamformed_spectra[cur_beam];
-        
-        // Execute FFT
-        fftw_execute(fft_plan);    
+    log_trace("Beamforming done");
+    
+    
+    // Create FFT plan once and reuse it for all beams
+    fftw_plan fft_plan = fftw_plan_dft_2d(beam_total, num_samples, beamformed_samples, beamformed_spectra, FFTW_FORWARD, FFTW_ESTIMATE);
+    log_trace("FFT plan created");
+    fftw_execute(fft_plan);
+    // for (int cur_beam = 0; cur_beam < beam_total; cur_beam++) {
+    //     // Execute FFT
+    // }
+    
+    log_trace("FFT Beamformed Samples done");
+    
+    // Debug: Print FFT results
+    for (int cur_beam = 0; cur_beam < beam_total; cur_beam++) {
+        for (int i = 0; i < num_samples; i++) if (i < 5) {
+            log_trace("fft_spectrum[%d][%d]: %f + %fi", cur_beam, i, creal(beamformed_spectra[cur_beam][i]), cimag(beamformed_spectra[cur_beam][i]));
+        }
     }
-
-
+    
     // Dispose of temp variables
     fftw_destroy_plan(fft_plan);
-    fftw_free(fft_in);
+    free(fft_plan);
     fftw_free(fft_out);
-    for (int cur_beam = 0; cur_beam < beam_num; cur_beam++) {
+    for (int cur_beam = 0; cur_beam < beam_total; cur_beam++) {
         fftw_free(phasing_vector[cur_beam]);
         fftw_free(beamformed_samples[cur_beam]);
     }
@@ -743,7 +753,6 @@ void process_all_beamformed_spectras(
 //     // Initial Data Variables
 //     int beam_num;
 //     double beam_sep;
-//     freq_data freq_data;
 //     int num_samples = meta_data->number_of_samples;
 //     int *antennas = meta_data->antenna_list;
 
@@ -1144,7 +1153,6 @@ clear_freq clear_freq_search(
     // Initial Data Variables
     int n_beams;
     double beam_sep;
-    freq_data freq_data;
 
     // Scale parameters to Hz and ms
     smsep = smsep / 1000000;
