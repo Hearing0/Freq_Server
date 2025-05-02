@@ -159,7 +159,7 @@ int temp_sample_sizes[] = {
     ANTENNA_NUM,
     SAMPLES_NUM,
 };
-fftw_complex ***samples_storage = NULL;
+fftw_complex *samples_storage = NULL;
 int samples_storage_sizes[] = {
     STORAGE_NUM,
     STATIC_ANTENNA_NUM,
@@ -394,19 +394,11 @@ void read_meta_data(sample_meta_data *result, void *shm_ptr, int ant_num) {
     log_trace("starting meta read..");
     double *ref_ptr = (double *) shm_ptr;
     int *antenna_ptr = (int *) result->antenna_list;
-
     
-    // Loop thru all meta elements and copy into result
-    for (int i = 0; i < (META_ELEM); i++) {
-        log_trace("reading[%d]: %f", i, ref_ptr[i]);
-        
-        if      (i == (0)) result->number_of_samples = (int) ref_ptr[i];
-        else if (i == (1)) result->x_spacing = ref_ptr[i];
-        else if (i == (2)) result->usrp_rf_rate = (int) ref_ptr[i];
-        
-        // if (VERBOSE && i < (ant_num + 2)) log_trace("    read_meta: %f", ref_ptr[i]);
-    }
-
+    // Read in meta data elements
+    result->number_of_samples = (int) ref_ptr[0];
+    result->x_spacing = ref_ptr[1];
+    result->usrp_rf_rate = (int) ref_ptr[2];
     log_trace("Fin reading meta_elem; reading antenna_list...");
     
     // Read in antenna_list elements
@@ -502,7 +494,8 @@ void cleanup() {
     // Cleanup fftw ptrs
     free_nested_fftw_ptr(temp_samples, 2, temp_sample_sizes);
     log_debug( "Cleaned temp_samples ...");
-    free_nested_fftw_ptr(samples_storage, 3, samples_storage_sizes);
+    // free_nested_fftw_ptr(samples_storage, 3, samples_storage_sizes);
+    fftw_free(samples_storage);
     log_debug( "Cleaned samples_storage ...");
     fftw_free(spectra_storage);
     log_debug( "Cleaned spectra_storage ...");
@@ -723,34 +716,42 @@ void realloc_samples_num(int samples_num, int total_beams) {
 
     // If num_antennas or samples_num changed, Reallocate samples_storage
     // Free previously allocated memory for samples_storage
-    free_nested_fftw_ptr(samples_storage, 3, samples_storage_sizes);
+    // free_nested_fftw_ptr(samples_storage, 3, samples_storage_sizes);
+    fftw_free(samples_storage);
     samples_storage_sizes[2] = samples_num;
     log_trace( "Freed old samples_storage memory...");
 
     // Reallocate samples_storage
-    samples_storage = (fftw_complex ***)fftw_malloc(STORAGE_NUM * sizeof(fftw_complex **));
+    samples_storage = fftw_alloc_complex(STORAGE_NUM * STATIC_ANTENNA_NUM * samples_num);
     if (samples_storage == NULL) {
-        log_fatal( "Error reallocating memory for samples_storage pointers");
-        perror("Error reallocating memory for samples_storage pointers");
+        log_fatal("Error allocating memory for samples_storage");
+        perror("Error allocating memory for samples_storage");
         exit(EXIT_FAILURE);
     }
-    for (int i = 0; i < STORAGE_NUM; i++) {
-        samples_storage[i] = (fftw_complex **)fftw_malloc(STATIC_ANTENNA_NUM * sizeof(fftw_complex *));
-        if (samples_storage[i] == NULL) {
-            log_fatal( "Error reallocating memory for samples_storage's antenna pointers");
-            perror("Error reallocating memory for samples_storage's antenna pointers");
-            exit(EXIT_FAILURE);
-        }
-        for (int j = 0; j < STATIC_ANTENNA_NUM; j++) {
-            samples_storage[i][j] = (fftw_complex *)fftw_malloc(samples_num * sizeof(fftw_complex));
-            if (samples_storage[i][j] == NULL) {
-                log_fatal( "Error reallocating memory for samples_storage elements");
-                perror("Error reallocating memory for samples_storage elements");
-                exit(EXIT_FAILURE);
-            }
-            memset(samples_storage[i][j], 0, samples_num * sizeof(fftw_complex));
-        }
-    }
+    log_trace( "Allocated new samples_storage memory...");
+    // samples_storage = (fftw_complex ***)fftw_malloc(STORAGE_NUM * sizeof(fftw_complex **));
+    // if (samples_storage == NULL) {
+    //     log_fatal( "Error reallocating memory for samples_storage pointers");
+    //     perror("Error reallocating memory for samples_storage pointers");
+    //     exit(EXIT_FAILURE);
+    // }
+    // for (int i = 0; i < STORAGE_NUM; i++) {
+    //     samples_storage[i] = (fftw_complex **)fftw_malloc(STATIC_ANTENNA_NUM * sizeof(fftw_complex *));
+    //     if (samples_storage[i] == NULL) {
+    //         log_fatal( "Error reallocating memory for samples_storage's antenna pointers");
+    //         perror("Error reallocating memory for samples_storage's antenna pointers");
+    //         exit(EXIT_FAILURE);
+    //     }
+    //     for (int j = 0; j < STATIC_ANTENNA_NUM; j++) {
+    //         samples_storage[i][j] = (fftw_complex *)fftw_malloc(samples_num * sizeof(fftw_complex));
+    //         if (samples_storage[i][j] == NULL) {
+    //             log_fatal( "Error reallocating memory for samples_storage elements");
+    //             perror("Error reallocating memory for samples_storage elements");
+    //             exit(EXIT_FAILURE);
+    //         }
+    //         memset(samples_storage[i][j], 0, samples_num * sizeof(fftw_complex));
+    //     }
+    // }
 
     // Realloc spectra_storage
     // free_nested_fftw_ptr(spectra_storage, 3, spectra_storage_sizes);
@@ -764,6 +765,7 @@ void realloc_samples_num(int samples_num, int total_beams) {
         perror("Error allocating memory for spectra_storage");
         exit(EXIT_FAILURE);
     }
+    log_trace( "Allocated new spectra_storage memory...");
     // spectra_storage = (fftw_complex ***)fftw_malloc(STORAGE_NUM * sizeof(fftw_complex **));
     // if (spectra_storage == NULL) {
     //     log_fatal( "Error reallocating memory for spectra_storage pointers");
@@ -956,29 +958,35 @@ int main() {
         memset(temp_samples[i], 0, SAMPLES_NUM * sizeof(fftw_complex));
     }
 
-    samples_storage = (fftw_complex ***)fftw_malloc(STORAGE_NUM * sizeof(fftw_complex **));
+    samples_storage = fftw_alloc_complex(STORAGE_NUM * STATIC_ANTENNA_NUM * SAMPLES_NUM);
     if (samples_storage == NULL) {
-        log_fatal("Error allocating memory for samples_storage pointers");
-        perror("Error allocating memory for samples_storage pointers");
+        log_fatal("Error allocating memory for samples_storage");
+        perror("Error allocating memory for samples_storage");
         exit(EXIT_FAILURE);
     }
-    for (int i = 0; i < STORAGE_NUM; i++) {
-        samples_storage[i] = (fftw_complex **)fftw_malloc(STATIC_ANTENNA_NUM * sizeof(fftw_complex *));
-        if (samples_storage[i] == NULL) {
-            log_fatal("Error allocating memory for samples_storage's antenna pointers");
-            perror("Error allocating memory for samples_storage's antenna pointers");
-            exit(EXIT_FAILURE);
-        }
-        for (int j = 0; j < STATIC_ANTENNA_NUM; j++) {
-            samples_storage[i][j] = (fftw_complex *)fftw_malloc(SAMPLES_NUM * sizeof(fftw_complex));
-            if (samples_storage[i][j] == NULL) {
-                log_fatal("Error allocating memory for samples_storage elements");
-                perror("Error allocating memory for samples_storage elements");
-                exit(EXIT_FAILURE);
-            }
-            memset(samples_storage[i][j], 0, SAMPLES_NUM * sizeof(fftw_complex));
-        }
-    }
+    // samples_storage = (fftw_complex ***)fftw_malloc(STORAGE_NUM * sizeof(fftw_complex **));
+    // if (samples_storage == NULL) {
+    //     log_fatal("Error allocating memory for samples_storage pointers");
+    //     perror("Error allocating memory for samples_storage pointers");
+    //     exit(EXIT_FAILURE);
+    // }
+    // for (int i = 0; i < STORAGE_NUM; i++) {
+    //     samples_storage[i] = (fftw_complex **)fftw_malloc(STATIC_ANTENNA_NUM * sizeof(fftw_complex *));
+    //     if (samples_storage[i] == NULL) {
+    //         log_fatal("Error allocating memory for samples_storage's antenna pointers");
+    //         perror("Error allocating memory for samples_storage's antenna pointers");
+    //         exit(EXIT_FAILURE);
+    //     }
+    //     for (int j = 0; j < STATIC_ANTENNA_NUM; j++) {
+    //         samples_storage[i][j] = (fftw_complex *)fftw_malloc(SAMPLES_NUM * sizeof(fftw_complex));
+    //         if (samples_storage[i][j] == NULL) {
+    //             log_fatal("Error allocating memory for samples_storage elements");
+    //             perror("Error allocating memory for samples_storage elements");
+    //             exit(EXIT_FAILURE);
+    //         }
+    //         memset(samples_storage[i][j], 0, SAMPLES_NUM * sizeof(fftw_complex));
+    //     }
+    // }
     int antenna_storage[STORAGE_NUM][STATIC_ANTENNA_NUM] = {false};
 
 
@@ -1271,7 +1279,7 @@ int main() {
                 for (int aidx = 0; aidx < meta_data.num_antennas; aidx++) {
                     // log_debug("    antenna_list[%d]: %d", aidx, meta_data.antenna_list[aidx]);
                     memcpy(
-                        samples_storage[tcs_storage_i][aidx], 
+                        &(samples_storage[tcs_storage_i * STATIC_ANTENNA_NUM + aidx * samples_num]), 
                         temp_samples[aidx], 
                         samples_num * sizeof(fftw_complex)
                     );
@@ -1279,13 +1287,13 @@ int main() {
                 log_info( "Stored samples_storage[%d] successfully...", tcs_storage_i);
 
                 // Store Antenna List
-                // memcpy(
-                //     antenna_storage[tcs_storage_i], 
-                //     meta_data.antenna_list, 
-                //     // sizeof(meta_data.antenna_list)
-                //     meta_data.num_antennas * sizeof(int)
-                // );
-                // log_info( "Stored antenna_storage[%d] successfully...", tcs_storage_i);
+                memcpy(
+                    antenna_storage[tcs_storage_i], 
+                    meta_data.antenna_list, 
+                    // sizeof(meta_data.antenna_list)
+                    meta_data.num_antennas * sizeof(int)
+                );
+                log_info( "Stored antenna_storage[%d] successfully...", tcs_storage_i);
                 
                 // Fill Spectra Storage
                 // process_all_beamformed_spectras(
