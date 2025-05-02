@@ -924,11 +924,11 @@ while (True):
         fcenter=12000,
         meta_data=meta_data
     )
-    CFS.request_clr_freq(
-        beam_num=0,
-        clr_range=clear_freq_range, 
-        sample_sep=340,     # only necesary on first request or if changing
-    )
+    # CFS.request_clr_freq(
+    #     beam_num=0,
+    #     clr_range=clear_freq_range, 
+    #     sample_sep=340,     # only necesary on first request or if changing
+    # )
     
     break
 

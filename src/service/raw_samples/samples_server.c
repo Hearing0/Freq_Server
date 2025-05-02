@@ -25,8 +25,9 @@
 #define LOG_PREFIX "[CFS] %s"               // *Unused* Prefix for log messages
 #define LOG_FILEPATH "log/cfs/cfs.%s.log"
 
-// Spectral Averaging Vars
-#define AVG_RATIO 4
+// Server Config Vars
+#define AVG_RATIO 4             // Number of samples to average during spectral averaging (4 = 4 samples avg-ed per beam)
+#define FFTW_THREADS 2          // Number of threads to use for FFTW
 
 // Default Length of Variables (some dynamically change during runtime)
 #define SAMPLES_NUM             2500
@@ -155,7 +156,7 @@ void **temp_ptrs;
 
 fftw_complex **temp_samples = NULL;
 int temp_sample_sizes[] = {
-    STATIC_ANTENNA_NUM,
+    ANTENNA_NUM,
     SAMPLES_NUM,
 };
 fftw_complex ***samples_storage = NULL;
@@ -164,7 +165,7 @@ int samples_storage_sizes[] = {
     STATIC_ANTENNA_NUM,
     SAMPLES_NUM,
 };
-fftw_complex ***spectra_storage = NULL;
+fftw_complex *spectra_storage = NULL;
 int spectra_storage_sizes[] = {
     STORAGE_NUM,
     BEAM_NUM,
@@ -176,9 +177,6 @@ int avg_beam_spectrum_sizes[] = {
     SAMPLES_NUM / AVG_RATIO,
 };
 double *avg_freq_vector = NULL;
-int avg_freq_vector_sizes[] = {
-    SAMPLES_NUM / AVG_RATIO,
-};
 int tcs_storage_i = 0;
 freq_band **clr_bands_storage = NULL;
 int clr_storage_i = 0;
@@ -219,6 +217,7 @@ void update_ptr(void *old_ptr, void *new_ptr) {
     for (int i = 0; i < temp_ptrs_num; i++) {
         if (temp_ptrs[i] == old_ptr) {
             // log_trace("Updating temp_ptrs[%d] from %p to %p", i, temp_ptrs[i], new_ptr);
+            free(temp_ptrs[i]); // Free the old pointer
             temp_ptrs[i] = new_ptr;
             return; // Exit the function once the pointer is found and updated
         }
@@ -307,14 +306,16 @@ void print_temp_ptrs() {
     }
 }
 
-void read_sample_shm(fftw_complex **temp_samples, void *samples_shm_ptr, int antenna_num, int samples_num, int antenna_list[]) {
+void read_sample_shm(fftw_complex **temp_samples, void *samples_shm_ptr, int antenna_num, int samples_num) {
     int *s_ptr = (int *) samples_shm_ptr;
+    
+    
     
     // Store sample data into complex form
     for (int i = 0; i < antenna_num; i++)
     {
         for (int j = 0; j < samples_num; j++) {
-            temp_samples[antenna_list[i]][j] = s_ptr[i * samples_num + j * 2] + I * s_ptr[i * samples_num + j * 2 + 1];
+            temp_samples[i][j] = s_ptr[i * samples_num + j * 2] + I * s_ptr[i * samples_num + j * 2 + 1];
 
             // Debug: Print 5 complex of each antenna batch
             // if (j < 4 || j > samples_num - 4 || j == 2499) {
@@ -489,32 +490,34 @@ void clean_sem(semaphore sem) {
  * @retval None
  */
 void cleanup() {
+    log_info( "Cleaning up ...");
+        
+    // Cleanup semaphores and SHM objects
     log_info( "Cleaning all semaphores and SHM objects...");
-
     for (int i = 0; i < SEM_NUM; i++) clean_sem(*semaphores[i]);
     log_info( "Cleaned all semaphores ...");
-
     for (int i = 0; i < PARAM_NUM; i++) clean_obj(*objects[i]);
     log_info( "Cleaned all objects ...");
-
-    // Free fftw ptrs
+    
+    // Cleanup fftw ptrs
     free_nested_fftw_ptr(temp_samples, 2, temp_sample_sizes);
     log_debug( "Cleaned temp_samples ...");
     free_nested_fftw_ptr(samples_storage, 3, samples_storage_sizes);
     log_debug( "Cleaned samples_storage ...");
-    free_nested_fftw_ptr(spectra_storage, 3, spectra_storage_sizes);
+    fftw_free(spectra_storage);
     log_debug( "Cleaned spectra_storage ...");
-
+    // cleanup_storage_fft();
+    // log_debug( "Cleaned fftw plan ...");
+    
     log_info( "Cleaned all fftw pointers ...");
     
-    
-    // Free ptrs
+    // Cleanup ptrs
     free_nested_ptr(clr_bands_storage, 2, clr_storage_sizes);
     log_debug( "Cleaned clr_bands_storage ...");
-
     free_nested_ptr(avg_beam_spectrum, 2, avg_beam_spectrum_sizes);
     log_debug( "Cleaned avg_beam_spectrum ...");
-
+    free(avg_freq_vector);
+    log_debug( "Cleaned avg_freq_vector ...");
 
     for (int i = 0; i < temp_ptrs_num; i++) {
         if (*(void **)temp_ptrs[i] != NULL) { //temp_ptrs[i] != NULL && 
@@ -526,9 +529,13 @@ void cleanup() {
         }
     }
     free(temp_ptrs);
-
+    
 
     log_info("Cleaned all pointers ...");
+    
+    // cleanup_fftw_threads();
+    fftw_cleanup();
+    log_info( "Cleaned all fftw-related entities...");
 }
 
 /**
@@ -692,24 +699,25 @@ void realloc_samples_num(int samples_num, int total_beams) {
 
     // Free previously allocated memory for temp_samples
     free_nested_fftw_ptr(temp_samples, 2, temp_sample_sizes);
-    // temp_sample_sizes[0] = meta_data.num_antennas;
+    temp_sample_sizes[0] = meta_data.num_antennas;
     temp_sample_sizes[1] = samples_num;
     log_trace( "Freed old temp_samples memory...");
     
     // Reallocate temp_samples
-    temp_samples = (fftw_complex **)fftw_malloc(STATIC_ANTENNA_NUM * sizeof(fftw_complex *));
+    temp_samples = (fftw_complex **)fftw_malloc(meta_data.num_antennas * sizeof(fftw_complex *));
     if (temp_samples == NULL) {
         log_fatal( "Error reallocating memory for temp_samples pointers");
         perror("Error reallocating memory for temp_samples pointers");
         exit(EXIT_FAILURE);
     }
-    for (int i = 0; i < STATIC_ANTENNA_NUM; i++) {
+    for (int i = 0; i < meta_data.num_antennas; i++) {
         temp_samples[i] = (fftw_complex *)fftw_malloc(samples_num * sizeof(fftw_complex));
         if (temp_samples[i] == NULL) {
             log_fatal( "Error allocating memory for temp_samples elements");
             perror("Error allocating memory for temp_samples elements");
             exit(EXIT_FAILURE);
         }
+        memset(temp_samples[i], 0, samples_num * sizeof(fftw_complex));
     } 
     log_trace( "Allocated new temp_samples memory...");
 
@@ -740,37 +748,45 @@ void realloc_samples_num(int samples_num, int total_beams) {
                 perror("Error reallocating memory for samples_storage elements");
                 exit(EXIT_FAILURE);
             }
+            memset(samples_storage[i][j], 0, samples_num * sizeof(fftw_complex));
         }
     }
 
     // Realloc spectra_storage
-    free_nested_fftw_ptr(spectra_storage, 3, spectra_storage_sizes);
-    spectra_storage_sizes[0] = STORAGE_NUM;
+    // free_nested_fftw_ptr(spectra_storage, 3, spectra_storage_sizes);
+    fftw_free(spectra_storage);
     spectra_storage_sizes[1] = total_beams;
     spectra_storage_sizes[2] = samples_num;
 
-    spectra_storage = (fftw_complex ***)fftw_malloc(STORAGE_NUM * sizeof(fftw_complex **));
+    spectra_storage = fftw_alloc_complex(STORAGE_NUM * total_beams * samples_num);
     if (spectra_storage == NULL) {
-        log_fatal( "Error reallocating memory for spectra_storage pointers");
-        perror("Error reallocating memory for spectra_storage pointers");
+        log_fatal("Error allocating memory for spectra_storage");
+        perror("Error allocating memory for spectra_storage");
         exit(EXIT_FAILURE);
     }
-    for (int i = 0; i < STORAGE_NUM; i++) {
-        spectra_storage[i] = (fftw_complex **)fftw_malloc(total_beams * sizeof(fftw_complex *));
-        if (spectra_storage[i] == NULL) {
-            log_fatal( "Error reallocating memory for spectra_storage's antenna pointers");
-            perror("Error reallocating memory for spectra_storage's antenna pointers");
-            exit(EXIT_FAILURE);
-        }
-        for (int j = 0; j < total_beams; j++) {
-            spectra_storage[i][j] = (fftw_complex *)fftw_malloc(samples_num * sizeof(fftw_complex));
-            if (spectra_storage[i][j] == NULL) {
-                log_fatal( "Error reallocating memory for spectra_storage elements");
-                perror("Error reallocating memory for spectra_storage elements");
-                exit(EXIT_FAILURE);
-            }
-        }
-    }
+    // spectra_storage = (fftw_complex ***)fftw_malloc(STORAGE_NUM * sizeof(fftw_complex **));
+    // if (spectra_storage == NULL) {
+    //     log_fatal( "Error reallocating memory for spectra_storage pointers");
+    //     perror("Error reallocating memory for spectra_storage pointers");
+    //     exit(EXIT_FAILURE);
+    // }
+    // for (int i = 0; i < STORAGE_NUM; i++) {
+    //     spectra_storage[i] = (fftw_complex **)fftw_malloc(total_beams * sizeof(fftw_complex *));
+    //     if (spectra_storage[i] == NULL) {
+    //         log_fatal( "Error reallocating memory for spectra_storage's antenna pointers");
+    //         perror("Error reallocating memory for spectra_storage's antenna pointers");
+    //         exit(EXIT_FAILURE);
+    //     }
+    //     for (int j = 0; j < total_beams; j++) {
+    //         spectra_storage[i][j] = (fftw_complex *)fftw_malloc(samples_num * sizeof(fftw_complex));
+    //         if (spectra_storage[i][j] == NULL) {
+    //             log_fatal( "Error reallocating memory for spectra_storage elements");
+    //             perror("Error reallocating memory for spectra_storage elements");
+    //             exit(EXIT_FAILURE);
+    //         }
+    //         memset(spectra_storage[i][j], 0, samples_num * sizeof(fftw_complex));
+    //     }
+    // }
     
     // Realloc avg_beam_spectrum
     free_nested_fftw_ptr(avg_beam_spectrum, 2, avg_beam_spectrum_sizes);
@@ -790,13 +806,14 @@ void realloc_samples_num(int samples_num, int total_beams) {
             perror("Error reallocating memory for avg_beam_spectrum elements");
             exit(EXIT_FAILURE);
         }
+        memset(avg_beam_spectrum[i], 0, (samples_num / AVG_RATIO) * sizeof(double));
     }
+    log_trace( "Allocated new avg_beam_spectrum memory...");
 
     // Realloc avg_freq_vector
     free(avg_freq_vector);
-    avg_freq_vector_sizes[0] = samples_num / AVG_RATIO;
-    
     avg_freq_vector = calloc(samples_num / AVG_RATIO, sizeof(double));
+    
     if (avg_freq_vector == NULL) {
         log_fatal( "Error reallocating memory for avg_freq_vector");
         perror("Error reallocating memory for avg_freq_vector");
@@ -815,11 +832,11 @@ void realloc_samples_num(int samples_num, int total_beams) {
 bool has_tcs_param_changed(int old_tcs_param[3], int new_tcs_param[3]) {
     // Check if any of the parameters have changed
     bool has_changed = false;
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 3; i++) {
         if (old_tcs_param[i] != new_tcs_param[i]) {
+            log_debug("TCS Param[%d] changed from %d to %d", i, old_tcs_param[i], new_tcs_param[i]);
             has_changed = true;
             old_tcs_param[i] = new_tcs_param[i]; // Update the old parameter
-            log_debug("TCS Param[%d] changed from %d to %d", i, old_tcs_param[i], new_tcs_param[i]);
         }
     }
 
@@ -923,19 +940,20 @@ int main() {
 
 
     // Allocate temp mem for shm varibles
-    temp_samples = (fftw_complex **)fftw_malloc(STATIC_ANTENNA_NUM * sizeof(fftw_complex *));
+    temp_samples = (fftw_complex **)fftw_malloc(ANTENNA_NUM * sizeof(fftw_complex *));
     if (temp_samples == NULL) {
         log_fatal("Error allocating memory for temp_samples pointers");
         perror("Error allocating memory for temp_samples pointers");
         exit(EXIT_FAILURE);
     }
-    for (int i = 0; i < STATIC_ANTENNA_NUM; i++) {
+    for (int i = 0; i < ANTENNA_NUM; i++) {
         temp_samples[i] = (fftw_complex *)fftw_malloc(SAMPLES_NUM * sizeof(fftw_complex));
         if (temp_samples[i] == NULL) {
             log_fatal("Error allocating memory for temp_samples elements");
             perror("Error allocating memory for temp_samples elements");
             exit(EXIT_FAILURE);
         }
+        memset(temp_samples[i], 0, SAMPLES_NUM * sizeof(fftw_complex));
     }
 
     samples_storage = (fftw_complex ***)fftw_malloc(STORAGE_NUM * sizeof(fftw_complex **));
@@ -958,33 +976,41 @@ int main() {
                 perror("Error allocating memory for samples_storage elements");
                 exit(EXIT_FAILURE);
             }
+            memset(samples_storage[i][j], 0, SAMPLES_NUM * sizeof(fftw_complex));
         }
     }
     int antenna_storage[STORAGE_NUM][STATIC_ANTENNA_NUM] = {false};
 
 
-    spectra_storage = (fftw_complex ***)fftw_malloc(STORAGE_NUM * sizeof(fftw_complex **));
+    spectra_storage = fftw_alloc_complex(STORAGE_NUM * BEAM_NUM * SAMPLES_NUM);
     if (spectra_storage == NULL) {
-        log_fatal("Error allocating memory for spectra_storage pointers");
-        perror("Error allocating memory for spectra_storage pointers");
+        log_fatal("Error allocating memory for spectra_storage");
+        perror("Error allocating memory for spectra_storage");
         exit(EXIT_FAILURE);
     }
-    for (int i = 0; i < STORAGE_NUM; i++) {
-        spectra_storage[i] = (fftw_complex **)fftw_malloc(BEAM_NUM * sizeof(fftw_complex *));
-        if (spectra_storage[i] == NULL) {
-            log_fatal("Error allocating memory for spectra_storage's beam pointers");
-            perror("Error allocating memory for spectra_storage's beam pointers");
-            exit(EXIT_FAILURE);
-        }
-        for (int j = 0; j < BEAM_NUM; j++) {
-            spectra_storage[i][j] = (fftw_complex *)fftw_malloc(SAMPLES_NUM * sizeof(fftw_complex));
-            if (spectra_storage[i][j] == NULL) {
-                log_fatal("Error allocating memory for spectra_storage elements");
-                perror("Error allocating memory for spectra_storage elements");
-                exit(EXIT_FAILURE);
-            }
-        }
-    }
+    // spectra_storage = (fftw_complex ***)fftw_malloc(STORAGE_NUM * sizeof(fftw_complex **));
+    // if (spectra_storage == NULL) {
+    //     log_fatal("Error allocating memory for spectra_storage pointers");
+    //     perror("Error allocating memory for spectra_storage pointers");
+    //     exit(EXIT_FAILURE);
+    // }
+    // for (int i = 0; i < STORAGE_NUM; i++) {
+    //     spectra_storage[i] = (fftw_complex **)fftw_malloc(BEAM_NUM * sizeof(fftw_complex *));
+    //     if (spectra_storage[i] == NULL) {
+    //         log_fatal("Error allocating memory for spectra_storage's beam pointers");
+    //         perror("Error allocating memory for spectra_storage's beam pointers");
+    //         exit(EXIT_FAILURE);
+    //     }
+    //     for (int j = 0; j < BEAM_NUM; j++) {
+    //         spectra_storage[i][j] = (fftw_complex *)fftw_malloc(SAMPLES_NUM * sizeof(fftw_complex));
+    //         if (spectra_storage[i][j] == NULL) {
+    //             log_fatal("Error allocating memory for spectra_storage elements");
+    //             perror("Error allocating memory for spectra_storage elements");
+    //             exit(EXIT_FAILURE);
+    //         }
+    //         memset(spectra_storage[i][j], 0, SAMPLES_NUM * sizeof(fftw_complex));
+    //     }
+    // }
 
     bool is_tcs_ready = false;
 
@@ -995,14 +1021,13 @@ int main() {
         restricted_freq[i].f_end = 0;
     }
 
-    freq_band *clr_bands = NULL;
-    clr_bands = (freq_band *)malloc(CLR_BANDS_MAX * sizeof(freq_band));
-    if (clr_bands == NULL) {
-        log_fatal("Error allocating memory for clr_bands elements");
-        perror("Error allocating memory for clr_bands elements");
-        exit(EXIT_FAILURE);
+    freq_band clr_bands[CLR_BANDS_MAX];
+    for (int i = 0; i < CLR_BANDS_MAX; i++) {
+        clr_bands[i].f_start = 0;
+        clr_bands[i].f_end = 0;
+        clr_bands[i].noise = 0;
+        clr_bands[i].is_selected = false;
     }
-    add_ptr((void **)&clr_bands);
 
     clr_bands_storage = (freq_band **)malloc(CLR_STORAGE_NUM * sizeof(freq_band *));
     if (clr_bands_storage == NULL) {
@@ -1017,9 +1042,11 @@ int main() {
             perror("Error allocating memory for clr_bands_storage elements");
             exit(EXIT_FAILURE);
         }
+        memset(clr_bands_storage[i], 0, CLR_BANDS_MAX * sizeof(freq_band));
     }
 
     int* clr_range = malloc(2 * sizeof(int));
+    memset(clr_range, 0, sizeof(clr_range));
     add_ptr((void **)&clr_range);
     int cur_beam = 0;
     int old_cur_beam = -1;
@@ -1045,7 +1072,11 @@ int main() {
     for (int i = 0; i < STATIC_ANTENNA_NUM; i++) {
         active_antennas[i] = false;
     }
-            
+
+    // Initialize FFTW for fast spectra storage
+    // initialize_fftw_threads(FFTW_THREADS);
+    // init_storage_fft(samples_num, beam_total);
+    
     // Parameters for Reading Restricted Frequencies
     char restrict_file[255] = "";
     char ststr[SITE_ID_ELEM + 1] = {0}; //(char*) malloc((SITE_ID_ELEM + 1) * sizeof(char));
@@ -1093,7 +1124,7 @@ int main() {
                     log_info( "Reallocating Meta Shared Memory...");
                     log_debug("num of antenna: %d", meta_data.num_antennas);
                     
-                    // Set Size of Shared Memory Object
+                    // Set Size of meta_data SHM Object
                     meta_obj.size = (meta_data.num_antennas + META_ELEM) * sizeof(double);
                     if (ftruncate(meta_obj.shm_fd, meta_obj.size) == -1) {
                         log_fatal( " ftruncate failed");
@@ -1101,7 +1132,7 @@ int main() {
                         exit(EXIT_FAILURE);
                     }
 
-                    // Request Block of Memory
+                    // Request meta_data's Block of Memory
                     log_trace( "Freeing Shared Memory Cache...");
                     munmap(meta_obj.shm_ptr, meta_obj.size);
                     log_trace( "Requesting Shared Memory Cache...");                    
@@ -1113,10 +1144,12 @@ int main() {
                     }                    
                     log_trace( "Meta Data successfully cached...");     
 
+                    
                     // Read Meta Data 
                     log_trace( "Meta Data reading...");
                     read_meta_data(&meta_data, meta_obj.shm_ptr, meta_data.num_antennas);
                     samples_num = meta_data.number_of_samples;
+
 
                     // Reallocate Samples SHM
                     log_info( "Reallocating Sample related Memory due to change in Antenna Num...");
@@ -1140,10 +1173,13 @@ int main() {
                 new_tcs_param[2] = meta_data.usrp_rf_rate;
                 if (has_tcs_param_changed(old_tcs_param, new_tcs_param)) {
                     log_info( "TCS Parameters changed...");
-                    realloc_samples_num(samples_num, beam_total);
                     is_tcs_ready = false;
                     tcs_storage_i = 0;
                     old_samples_num = samples_num;
+
+                    // log_info( "Reinitializing TCS FFTW plan...");
+                    // cleanup_storage_fft();
+                    // init_storage_fft(samples_num, beam_total);
                 }
                 update_active_antennas(active_antennas, meta_data.antenna_list, meta_data.num_antennas);
                 
@@ -1217,7 +1253,7 @@ int main() {
 
             // Process Sample relevant data
             log_trace( "Processing client sample data...");
-            read_sample_shm(temp_samples, samples_obj.shm_ptr, meta_data.num_antennas, samples_num, &meta_data.antenna_list);
+            read_sample_shm(temp_samples, samples_obj.shm_ptr, meta_data.num_antennas, samples_num);
             log_trace( "Samples done...");
 
             if (*(int*) (fcenter_obj.shm_ptr) != 0) {
@@ -1232,36 +1268,38 @@ int main() {
             log_info(" Storing Samples...");
             if (tcs_storage_i < STORAGE_NUM) {
                 // Store Samples
-                memcpy(
-                    samples_storage[tcs_storage_i], 
-                    temp_samples, 
-                    STATIC_ANTENNA_NUM * samples_num * sizeof(fftw_complex)
-                );
-                log_debug( "Stored Samples[%d] successfully...", tcs_storage_i);
+                for (int aidx = 0; aidx < meta_data.num_antennas; aidx++) {
+                    // log_debug("    antenna_list[%d]: %d", aidx, meta_data.antenna_list[aidx]);
+                    memcpy(
+                        samples_storage[tcs_storage_i][aidx], 
+                        temp_samples[aidx], 
+                        samples_num * sizeof(fftw_complex)
+                    );
+                }
+                log_info( "Stored samples_storage[%d] successfully...", tcs_storage_i);
 
-                // Store Antenna Storage
-                memcpy(
-                    antenna_storage[tcs_storage_i], 
-                    meta_data.antenna_list, 
-                    // sizeof(meta_data.antenna_list)
-                    meta_data.num_antennas * sizeof(int)
-                );
-                log_debug( "Stored Antenna Storage[%d] successfully...", tcs_storage_i);
+                // Store Antenna List
+                // memcpy(
+                //     antenna_storage[tcs_storage_i], 
+                //     meta_data.antenna_list, 
+                //     // sizeof(meta_data.antenna_list)
+                //     meta_data.num_antennas * sizeof(int)
+                // );
+                // log_info( "Stored antenna_storage[%d] successfully...", tcs_storage_i);
                 
                 // Fill Spectra Storage
-                process_all_beamformed_spectras(
-                        temp_samples,
-                        clr_range, 
-                        sample_sep, 
-                        restricted_freq, 
-                        restricted_num,
-                        &meta_data,
-                        beam_total,
-                        &active_antennas,
-                        spectra_storage[tcs_storage_i]
-                    );
+                // process_all_beamformed_spectras(
+                //         temp_samples,
+                //         clr_range, 
+                //         sample_sep, 
+                //         restricted_freq, 
+                //         restricted_num,
+                //         &meta_data,
+                //         beam_total,
+                //         &(spectra_storage[tcs_storage_i])
+                //     );
 
-                log_info( "Processed Samples[%d] into Beamformed Spectra successfully...", tcs_storage_i);
+                log_info( "Processed spectra_storage[%d] successfully...", tcs_storage_i);
                 tcs_storage_i++;
 
                 if (tcs_storage_i >= STORAGE_NUM) {
@@ -1282,8 +1320,8 @@ int main() {
             //         beam_total,
             //         STORAGE_NUM,
             //         &meta_data,
-            //         &avg_beam_spectrum,
-            //         &avg_freq_vector
+            //         avg_beam_spectrum,
+            //         avg_freq_vector
             //     );
 
             //     // 
@@ -1370,7 +1408,7 @@ int main() {
                         STORAGE_NUM,
                         &meta_data,
                         avg_beam_spectrum,
-                        &avg_freq_vector
+                        avg_freq_vector
                     );
                     log_debug( "Avg Beam Spectrum done...");
 
@@ -1381,7 +1419,7 @@ int main() {
                         sample_sep,
                         restricted_freq, 
                         restricted_num,
-                        &avg_freq_vector,
+                        avg_freq_vector,
                         &meta_data,
                         clr_bands
                     );
