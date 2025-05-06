@@ -54,7 +54,7 @@ static const char *level_colors[] = {
 
 static void stdout_callback(log_Event *ev) {
   char buf[32];
-  sprintf(buf, "%d:%d:%d:%d", ev->time->tm_hour, ev->time->tm_min,
+  sprintf(buf, "%d:%d:%d,%d", ev->time->tm_hour, ev->time->tm_min,
           ev->time->tm_sec, ev->time_ms);
   // buf[strftime(buf, sizeof(buf), "%H:%M:%S", ev->time)] = '\0';
 #ifdef LOG_USE_COLOR
