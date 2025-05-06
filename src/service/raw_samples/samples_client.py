@@ -275,7 +275,7 @@ class ClearFrequencyService():
             active_clients -= 1
             m.seek(0)
             m.write(struct.pack('i', active_clients))
-            print(f"[clearFrequencyService] Decremented Active Clients Counter: {active_clients}")
+            print(f"[clearFrequencyService] Decremented Active Clients Counter: {active_clients}\n")
             return active_clients
       
               
@@ -448,7 +448,7 @@ class ClearFrequencyService():
             end_time = time.time()
             elapsed_time = end_time - start_time
             
-            print(f"[Frequency Client] Time to write {obj['elem_num']} elements: {elapsed_time:.6f} seconds")
+            # print(f"[Frequency Client] Time to write {obj['elem_num']} elements: {elapsed_time:.6f} seconds")
                     
     def read_m_data(self, obj):
         """Reads in data from the shared memory file descriptor.
@@ -534,6 +534,8 @@ class ClearFrequencyService():
         """ Waits for client requests, then processes server data, writes client 
             data, and requests server to process new data. When process is 
             terminated, the try/finally block cleans up.
+            
+            Note: fcenter and meta_data can be None after being passed as arguments on the first send_samples() method call.
         """
         input_data = [
             raw_samples, 
@@ -554,7 +556,7 @@ class ClearFrequencyService():
                 
         # Get in Queue
         active_clients = self.increment_active_clients()
-        print(f"[clearFrequencyService] Active clients count: {active_clients}\n")
+        print(f"[clearFrequencyService] Active clients count: {active_clients}")
         
         try:
             self.premap_shm(meta_data)
@@ -673,7 +675,7 @@ class ClearFrequencyService():
                 
         # Get in Queue
         active_clients = self.increment_active_clients()
-        print(f"[clearFrequencyService] Active clients count: {active_clients}\n")
+        print(f"[clearFrequencyService] Active clients count: {active_clients}")
         
         try:
             self.premap_shm()
@@ -914,21 +916,26 @@ def flatten_raw_into_int_bytes(arr):
 # Test flatten speed
 # timeit.timeit()
 
-
-while (True):   
+i = 0
+while (i < 20):
+# while (True):   
     meta_data['antenna_list'] = meta_ant_full
     CFS.send_samples(
         raw_samples, 
         fcenter=12000,
         meta_data=meta_data
     )
+    
+    i += 1
+
+for i in range(0, 16):
     CFS.request_clr_freq(
-        beam_num=0,
+        beam_num=i,
         clr_range=clear_freq_range, 
         sample_sep=340,     # only necesary on first request or if changing
     )
-    
-    break
+
+    # break
 
     # # Test dynamic SHM reallocation due to antenna resizing
     # if trimmed_samples is not None:
