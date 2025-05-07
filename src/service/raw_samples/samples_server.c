@@ -21,7 +21,7 @@
 
 
 // Logging Vars
-#define LOG_LEVEL 2                         // 0 = TRACE, 1 = DEBUG, 2 = INFO, 3 = WARN, 4 = ERROR, 5 = FATAL  
+#define LOG_LEVEL 0                         // 0 = TRACE, 1 = DEBUG, 2 = INFO, 3 = WARN, 4 = ERROR, 5 = FATAL  
 #define LOG_PREFIX "[CFS] %s"               // *Unused* Prefix for log messages
 #define LOG_FILEPATH "log/cfs/cfs.%s.log"
 
@@ -655,6 +655,9 @@ void flag_debug() {
  */
 void realloc_samples_num(int samples_num, int total_beams) {
     log_info( "Samples Num Reallocation in progress...");
+    
+    log_trace( "Freeing Sample SHM Cache...");
+    munmap(samples_obj.shm_ptr, samples_obj.size);
 
     // Set Size of Shared Memory Object
     samples_obj.size = (meta_data.num_antennas) * samples_num * 2 * sizeof(int);
@@ -665,16 +668,14 @@ void realloc_samples_num(int samples_num, int total_beams) {
     }
 
     // Request Block of Memory
-    log_trace( "Freeing Sample Shared Memory Cache...");
-    munmap(samples_obj.shm_ptr, samples_obj.size);
-    log_trace( "Requesting Sample Shared Memory Cache...");                    
+    log_trace( "Requesting Sample SHM Cache...");                    
     samples_obj.shm_ptr = mmap(0, samples_obj.size, PROT_WRITE | PROT_READ, MAP_SHARED, samples_obj.shm_fd, 0);
     if (samples_obj.shm_ptr == MAP_FAILED) {
         log_fatal( "Memory Mapping failed for %s", samples_obj.name);
         perror("Memory Mapping failed");
         exit(EXIT_FAILURE);
     }                    
-    log_trace( "Samples Data successfully cached...");    
+    log_trace( "Sample SHM successfully cached...");    
 
 
     // Free previously allocated memory for temp_samples
@@ -769,8 +770,8 @@ bool has_tcs_param_changed(int old_tcs_param[3], int new_tcs_param[3]) {
     // Check if any of the parameters have changed
     bool has_changed = false;
     for (int i = 0; i < 3; i++) {
+        log_debug("TCS Param[%d]: %d vs %d", i, old_tcs_param[i], new_tcs_param[i]);
         if (old_tcs_param[i] != new_tcs_param[i]) {
-            log_debug("TCS Param[%d] changed from %d to %d", i, old_tcs_param[i], new_tcs_param[i]);
             has_changed = true;
             old_tcs_param[i] = new_tcs_param[i]; // Update the old parameter
         }
@@ -1009,8 +1010,12 @@ int main() {
                 if (meta_data.num_antennas != old_antenna_num) {
                     log_info( "Reallocating Meta Shared Memory...");
                     log_debug("num of antenna: %d", meta_data.num_antennas);
+
+                    log_trace( "Freeing Meta SHM Cache...");
+                    munmap(meta_obj.shm_ptr, meta_obj.size);
                     
                     // Set Size of meta_data SHM Object
+                    log_trace( "Setting Size of Meta SHM Cache...");
                     meta_obj.size = (meta_data.num_antennas + META_ELEM) * sizeof(double);
                     if (ftruncate(meta_obj.shm_fd, meta_obj.size) == -1) {
                         log_fatal( " ftruncate failed");
@@ -1019,9 +1024,7 @@ int main() {
                     }
 
                     // Request meta_data's Block of Memory
-                    log_trace( "Freeing Shared Memory Cache...");
-                    munmap(meta_obj.shm_ptr, meta_obj.size);
-                    log_trace( "Requesting Shared Memory Cache...");                    
+                    log_trace( "Requesting Meta SHM Cache...");                    
                     meta_obj.shm_ptr = mmap(0, meta_obj.size, PROT_WRITE | PROT_READ, MAP_SHARED, meta_obj.shm_fd, 0);
                     if (meta_obj.shm_ptr == MAP_FAILED) {
                         log_fatal( "Memory Mapping failed for %s", meta_obj.name);
@@ -1057,7 +1060,7 @@ int main() {
                 new_tcs_param[0] = samples_num;
                 new_tcs_param[1] = beam_total;
                 new_tcs_param[2] = meta_data.usrp_rf_rate;
-                if (has_tcs_param_changed(old_tcs_param, new_tcs_param)) {
+                if (has_tcs_param_changed(old_tcs_param, new_tcs_param) == true) {
                     log_info( "TCS Parameters changed...");
                     is_tcs_ready = false;
                     tcs_storage_i = 0;
@@ -1137,7 +1140,7 @@ int main() {
             sem_wait(sl_samples.sem);
 
             // Process Sample relevant data
-            log_trace( "Processing client sample data...");
+            log_info( "Processing client sample data...");
             read_sample_shm(temp_samples, samples_obj.shm_ptr, meta_data.num_antennas, samples_num);
             log_trace( "Samples done...");
 

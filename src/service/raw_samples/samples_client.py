@@ -366,7 +366,7 @@ class ClearFrequencyService():
                 interleaved_data[1::2] = array_data_np.imag.astype(np.int32).ravel()
                 
                 # Print set per 2500 elemnents (till 5 set) in interleaved_data to verify
-                for i in range(0, 5):
+                for i in range(0, interleaved_data.size // 5000):
                     print(f"[Frequency Client] interleaved_data: ", interleaved_data[i * 5000:(i + 1) * 5000], "...")
                 
                 # Write directly to shared memory
@@ -872,16 +872,21 @@ raw_samples, meta_data = read_sample_pickle("/home/df/Desktop/PSU-SuperDARN/Freq
 clear_freq_range = [ int(12 * pow(10,6)), int(12.5 * pow(10,6)) ]
 # restrict_data=read_restrict_file(RESTRICT_FILE)
 
+# Test: only first two antennas and 2000 samples
 meta_ant_full = meta_data['antenna_list']
 meta_ant_partial = [0,2] 
-trimmed_samples = raw_samples[:2]         #HACK: writes only first two antenna's samples
+trimmed_samples = []
+for i in meta_ant_partial:
+    trimmed_samples.append(raw_samples[i][:2000])
+ 
+# trimmed_samples = raw_samples[:2][:2000]
 
-print(f"samples: {raw_samples[:2][:10]}")
+# print(f"samples: {raw_samples[:2][:10]}")
 
 # print(f"raw_samples size: {len(raw_samples) * len(raw_samples[0])}")
 # print(f"raw_samples shape: {len(raw_samples)} x {len(raw_samples[0])} x {2} (antenna_num x sample_num x complex)")
 # print(f"trimmed_s size: {len(trimmed_samples) * len(trimmed_samples[0])}")
-# print(f"trimmed_samples shape: {len(trimmed_samples)} x {len(trimmed_samples[0])} x {2} (antenna_num x sample_num x complex)")
+print(f"trimmed_samples shape: {len(trimmed_samples)} x {len(trimmed_samples[0])} x {2} (antenna_num x sample_num x complex)")
 
 # CFS.flag_debug(trimmed_samples, 
 #                 clr_range=clear_freq_range, 
@@ -920,11 +925,22 @@ i = 0
 while (i < 20):
 # while (True):   
     meta_data['antenna_list'] = meta_ant_full
+    meta_data['number_of_samples'] = 2500
     CFS.send_samples(
         raw_samples, 
         fcenter=12000,
         meta_data=meta_data
     )
+
+    # Test dynamic SHM reallocation due to antenna resizing
+    if trimmed_samples is not None:
+        meta_data['antenna_list'] = meta_ant_partial
+        meta_data['number_of_samples'] = 2000
+        CFS.send_samples(
+            trimmed_samples, 
+            fcenter=12000,
+            meta_data=meta_data
+        )
     
     i += 1
 
@@ -937,14 +953,6 @@ for i in range(0, 16):
 
     # break
 
-    # # Test dynamic SHM reallocation due to antenna resizing
-    # if trimmed_samples is not None:
-    #     meta_data['antenna_list'] = meta_ant_partial
-    #     CFS.send_samples(
-    #         trimmed_samples, 
-    #         fcenter=12000,
-    #         meta_data=meta_data
-    #     )
         
     #     # break
 

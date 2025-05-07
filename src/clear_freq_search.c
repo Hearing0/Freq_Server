@@ -685,7 +685,7 @@ void process_all_beamformed_spectras(
         int beam_total,
         fftw_complex *beamformed_spectra
     ) {
-    log_trace("Entered process_all_beamformed_spectras()...");
+    log_debug("Entered process_all_beamformed_spectras()...");
 
     // Constants
     const char *config_path = "../SuperDARN_UHD_Server/array_config.ini";              //"../Freq_Server/utils/clear_freq_input/array_config.ini";
@@ -709,20 +709,20 @@ void process_all_beamformed_spectras(
     log_trace("Inputs exist in process_all_beam_spectra()");
 
     // Allocate memory for Variables    
-    fftw_complex **phasing_vector = (fftw_complex**) fftw_malloc(sizeof(fftw_complex*) * beam_total);
+    fftw_complex *phasing_vector = fftw_alloc_complex(beam_total * num_samples);
     fftw_complex *beamformed_samples = fftw_alloc_complex(beam_total * num_samples);
     // fftw_complex *beamformed_samples_ptr = beamformed_samples;
-    for (int cur_beam = 0; cur_beam < beam_total; cur_beam++) {
-        phasing_vector[cur_beam]     = (fftw_complex*) fftw_malloc(num_samples * sizeof(fftw_complex));
-        // beamformed_samples[cur_beam] = (fftw_complex*) fftw_malloc(num_samples * sizeof(fftw_complex));
-        // beam_fft_spectrum[cur_beam]       = (fftw_complex*) fftw_malloc(num_samples * sizeof(int));
-    }
+    // for (int cur_beam = 0; cur_beam < beam_total; cur_beam++) {
+    //     phasing_vector[cur_beam]     = (fftw_complex*) fftw_malloc(num_samples * sizeof(fftw_complex));
+    //     // beamformed_samples[cur_beam] = (fftw_complex*) fftw_malloc(num_samples * sizeof(fftw_complex));
+    //     // beam_fft_spectrum[cur_beam]       = (fftw_complex*) fftw_malloc(num_samples * sizeof(int));
+    // }
     if (!phasing_vector || !beamformed_samples) {
         perror("Error: Failed to allocate process_all_beam_spectra() memory.");
         exit(EXIT_FAILURE);
     }
 
-    log_trace("Allocated memory for phasing_vector and beamformed_samples");
+    log_debug("Allocated memory for phasing_vector and beamformed_samples");
 
     // Scale parameters to Hz and ms
     smsep = smsep / 1000000;
@@ -738,8 +738,9 @@ void process_all_beamformed_spectras(
     memset(beam_angle, 0, sizeof(beam_angle));
     for (int cur_beam = 0; cur_beam < beam_total; cur_beam++) {
         beam_angle[cur_beam] = calc_beam_angle(beam_total, cur_beam, beam_sep);  
+        log_trace("beam_angle[%d]: %f", cur_beam, beam_angle[cur_beam]);
     }
-    log_trace("Beam angles calculated");
+    log_debug("Beam angles calculated");
     
 
     // Phasing and Beamforming Calculation
@@ -747,11 +748,11 @@ void process_all_beamformed_spectras(
     for (int cur_beam = 0; cur_beam < beam_total; cur_beam++) {
         current_beam_samples = beamformed_samples + cur_beam * num_samples;
         phasing_and_beamforming(
-            beam_angle[cur_beam], clear_freq_range, meta_data, phasing_vector[cur_beam], antennas, num_samples, raw_samples, current_beam_samples
+            (double) (beam_angle[cur_beam]), &clear_freq_range, meta_data, &(phasing_vector[cur_beam * num_samples]), antennas, num_samples, raw_samples, current_beam_samples
         );
         // for (int i = 0; i < num_samples; i++) if (i < 5 || i > 2495) log_trace("beamformed[%d]    = %f + %fi", i, creal(beamformed_samples[cur_beam * num_samples + i]), cimag(beamformed_samples[cur_beam * num_samples + i]));
     }
-    log_trace("Beamforming done");
+    log_debug("Beamforming done");
 
 
     // FFT Beamformed Samples
@@ -766,7 +767,7 @@ void process_all_beamformed_spectras(
         fftw_execute_dft(fft_plan, current_beam_samples, fft_spectrum);
     }
     fftw_destroy_plan(fft_plan);
-    log_trace("FFT done");
+    log_debug("FFT done");
 
     // Debug: Print FFT results
     // for (int cur_beam = 0; cur_beam < beam_total; cur_beam++) {
@@ -776,11 +777,8 @@ void process_all_beamformed_spectras(
     // }
     
     // Dispose of temp variables
-    for (int cur_beam = 0; cur_beam < beam_total; cur_beam++) {
-        fftw_free(phasing_vector[cur_beam]);
-    }
-    fftw_free(beamformed_samples);
     fftw_free(phasing_vector);
+    fftw_free(beamformed_samples);
     fftw_cleanup();
 }
 
