@@ -1,4 +1,3 @@
-#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -7,9 +6,9 @@
 #include <fftw3.h>      // FFT transform library
 #include <string.h>
 #include <time.h>
-#include "../utils/misc_read_writes.c" 
+#include <signal.h>
 #include "clear_freq_search.h"
-#include "../utils/log.h"
+#include "log.h"
 
 
 // Define Constants
@@ -26,7 +25,6 @@
 
 
 // Config and Debug Flags
-#define VERBOSE 0
 #define SPECTRAL_AVGING 1
 #define BIN_OR_CSV_LOG  0   // 0 for Bin, otherwise CSV
 
@@ -34,11 +32,13 @@
 #define TEST_CLR_RANGE 1
 
 // Config Filepaths
-#define SPECTRAL_LOG_FILE "save_spectra"
-#define SPECTRUM_FILE   "../Freq_Server/utils/data_dump/fft_spectrum/fft_spectrum.%s.%s"
-#define CLR_FREQ_FILE   "../Freq_Server/utils/data_dump/clr_freq/clr_freq.%s.%s"
-#define SAMPLE_RE_FILE  "../Freq_Server/utils/data_dump/samples/sample_re.csv"
-#define SAMPLE_IM_FILE  "../Freq_Server/utils/data_dump/samples/sample_im.csv"
+#define SPECTRAL_LOG_FILE   "save_spectra"
+#define LOG_PATH            "log/"
+#define SPECTRUM_FILE       "log/fft_spectrum/fft_spectrum.%s.%s"
+#define CLR_FREQ_FILE       "log/clr_freq/clr_freq.%s.%s"
+#define SAMPLE_RE_FILE      "log/sample_re.csv"
+#define SAMPLE_IM_FILE      "log/sample_im.csv"
+
 
 // TODO: Pass in clr_freq_range via restrict actual file
 // #define RESTRICT_FILE = '/home/radar/repos/SuperDARN_MSI_ROS/linux/home/radar/ros.3.6/tables/superdarn/site/site.sps/restrict.dat.inst'
@@ -734,7 +734,6 @@ void process_all_beamformed_spectras(
 
 
     // Beam Angle Calculation
-    // read_array_config(config_path, &beam_total, &beam_sep);
     double beam_angle[beam_total];
     memset(beam_angle, 0, sizeof(beam_angle));
     for (int cur_beam = 0; cur_beam < beam_total; cur_beam++) {
@@ -1044,7 +1043,6 @@ clear_freq clear_freq_search(
     }
 
     // Beam Angle Calculation
-    // read_array_config(config_path, &n_beams, &beam_sep);
     double beam_angle = calc_beam_angle(n_beams, cur_beam, beam_sep);  
 
     // Debug: Display parameters

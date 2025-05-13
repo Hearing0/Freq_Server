@@ -4,7 +4,7 @@ LIBS= -lfftw3_threads -lfftw3 -lm -lrt -liniparser
 
 INCLUDE= 
 
-OBJS=utils/log.o src/service/raw_samples/samples_server.o 
+OBJS=src/clear_freq_search.o src/ini_parser.o src/misc_read_writes.o src/log.o src/clear_frequency_server.o 
 
 TARGET=server
 

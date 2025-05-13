@@ -11,8 +11,10 @@
 #include <fftw3.h>      // FFT transform library
 #include <signal.h>
 #include <time.h>
-#include "../../clear_freq_search.c"
-
+#include "clear_freq_search.h"
+#include "ini_parser.h"
+#include "read_config.c"
+#include "log.h"
 
 
 // Build with the following flags:
@@ -20,7 +22,7 @@
 
 
 // Logging Vars
-#define LOG_LEVEL 0                         // 0 = TRACE, 1 = DEBUG, 2 = INFO, 3 = WARN, 4 = ERROR, 5 = FATAL  
+#define LOG_LEVEL 2                         // 0 = TRACE, 1 = DEBUG, 2 = INFO, 3 = WARN, 4 = ERROR, 5 = FATAL  
 #define LOG_PREFIX "[CFS] %s"               // *Unused* Prefix for log messages
 #define LOG_FILEPATH "log/cfs/cfs.%s.log"
 
@@ -29,7 +31,7 @@
 #define FFTW_THREADS 2          // Number of threads to use for FFTW
 
 // Filepaths Vars
-#define CLR_STORE_FILEPATH 	"../../../utils/csv_dump/clr_band_storage/"
+#define CLR_STORE_FILEPATH 	"log/clr_band_storage/"
 #define ARRAY_CONFIG_FILEPATH "array_config.ini"
 
 // Default Length of Variables (some dynamically change during runtime)
@@ -47,6 +49,7 @@
 #define CLR_BANDS_MAX           6
 #endif
 #define CLR_STORAGE_NUM         10
+#define CLR_STORE_FILEPATH 	"log/clr_band_storage/"
 #define SITE_ID_ELEM            3                   // 3 = 3-letter identifier 
 
 #define SAMPLES_SHM_SIZE        (ANTENNA_NUM * SAMPLES_NUM * 2 * sizeof(int)) 
@@ -549,7 +552,7 @@ void write_clr_log_csv(freq_band **clr_storage, int clr_num, int radar_id) {
     time(&raw_time);
     time_info = localtime(&raw_time);
     strftime(timestamp, buffer_size, "%Y.%m.%d_%H:%M:%S", time_info);
-    snprintf(name, sizeof(name), "utils/data_dump/clr_log/clrlog_%s.r%d.csv", timestamp, radar_id);
+    snprintf(name, sizeof(name), "log/clr_freq/clrlog_%s.r%d.csv", timestamp, radar_id);
 
     // Generate clear log file
     FILE *file = fopen(name, "w");
@@ -874,7 +877,7 @@ int main() {
 
 
     Config array_config = {0}; 
-    array_config = read_array_config(ARRAY_CONFIG_FILEPATH);
+    ini_parse(ARRAY_CONFIG_FILEPATH, config_ini_handler, &array_config);
     if (array_config.array_info.beam_sep == 0) {
         log_fatal( "Error reading array configuration file");
         perror("Error reading array configuration file");

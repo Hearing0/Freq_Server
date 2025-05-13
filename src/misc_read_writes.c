@@ -5,44 +5,11 @@
 #include <complex.h>
 #include <fftw3.h>      // FFT transform library
 #include <string.h>
-#include "../utils/ini_parser/ini.c"
-#include "../utils/read_config.c"
 #include <time.h>
+#include "clear_freq_search.h"
+#include <ctype.h>
 #include <sys/stat.h>
 #include "log.h"
-
-
-#ifndef CLR_BANDS_MAX
-#define CLR_BANDS_MAX 6
-#endif
-
-
-typedef struct sample_meta_data {
-    int antenna_list[30];
-    int num_antennas;
-    int number_of_samples;
-    double x_spacing;
-    int usrp_rf_rate;
-    int usrp_fcenter;
-} sample_meta_data;
-
-typedef struct freq_data {
-    double *restricted_freq;
-    double *clear_freq_range;
-} freq_data;
-
-typedef struct freq_band {
-    int f_start;
-    int f_end;
-    double noise;
-    bool is_selected;
-} freq_band;
-
-
-typedef struct clear_freq {
-    double noise;
-    double tfreq;
-} clear_freq;
 
 void file_access_error(const char *filepath) {
     log_error("[ERROR: accessing filepath: %s\n", filepath);
@@ -88,6 +55,7 @@ void update_ptr_no_global(void *old_ptr, void *new_ptr, void** temp_ptrs, int te
     // If the old pointer is not found, add the new pointer to the array
     add_ptr_no_global((void **)&new_ptr, temp_ptrs, &temp_ptrs_num);
 }
+
 
 /**
  * @brief  Writes a complex Frequency Spectrum to csv file to be plotted in python.
@@ -411,26 +379,6 @@ void read_clr_freq_bin(char *filename, freq_band *clr_bands, int *clr_start, int
 // 
 //     fclose(file);
 // }
-
-/**
- * @brief  Loads in the array configuration from array_config.ini. 
- * @note   By DF
- * @param  *config_path:       Filepath of the array_config.ini file
- * @retval None
- */
-Config read_array_config(const char *config_path){
-    Config config = {0};
-
-    if (ini_parse(config_path, config_ini_handler, &config) < 0) {
-        log_error("Can't load config_path: \n%s", config_path);
-        config.array_info.beam_sep = 0;
-    }
-
-    return config;
-    // *x_spacing = config.array_info.x_spacing;
-    // *n_beams = config.array_info.nbeams;
-    // *beam_sep = config.array_info.beam_sep;
-}
 
 void read_restrict(char *filepath, freq_band *restricted_freq, int *restricted_num) {
     FILE *file = fopen(filepath, "r");
