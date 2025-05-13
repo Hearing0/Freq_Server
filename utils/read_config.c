@@ -5,6 +5,7 @@
 
 typedef struct {
     int radar_stid;
+    int nradars;
     double x_spacing;
     int nbeams;
     double beam_sep;
@@ -40,6 +41,9 @@ static int config_ini_handler(void* user, const char* section, const char* name,
         } else if (strcmp(name, "beam_sep") == 0) {
             pconfig->array_info.beam_sep = atof(value);
             // printf("value: %f\nvalue (str): %s", atof(value), value);
+        } else if (strcmp(name, "nradars") == 0) {
+            pconfig->array_info.nradars = atoi(value);
+            // printf("value: %d\nvalue (str): %s", atoi(value), value);
         }
     } else if (strcmp(section, "hardware_limits") == 0) {
         if (strcmp(name, "max_tpulse") == 0) {
