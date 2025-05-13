@@ -48,6 +48,7 @@ class ClearFrequencyService():
     ANTENNA_SHM_SIZE        = (1 * INT_SIZE)
     CLR_BANDS_SHM_SIZE      = (1 * INT_SIZE * 3)     # TODO: Round to convert freqs to int again 
     SITE_ID_SHM_SIZE        = (3 * CHAR_SIZE)
+    RADAR_ID_SHM_SIZE       = (1 * INT_SIZE)
     ACTIVE_CLIENTS_SHM_SIZE = (1 * INT_SIZE)
 
     RETRY_ATTEMPTS = 3
@@ -63,13 +64,14 @@ class ClearFrequencyService():
     META_DATA_SHM_NAME =        "/meta_data"
     ANTENNA_SHM_NAME =          "/antenna_num"
     CLRFREQ_SHM_NAME =          "/clear_freq"
-    ACTIVE_CLIENTS_SHM_NAME =   "/active_clients"   # For Debugging
     SITE_ID_SHM_NAME =          "/site_id"
+    RADAR_ID_SHM_NAME =         "/radar_id"
+    ACTIVE_CLIENTS_SHM_NAME =   "/active_clients"   # For Debugging
 
     # Semaphore Constants
     SAMPLE_PARAM_NUM =      2
     RESTRICT_PARAM_NUM =    2
-    PARAM_NUM =             9
+    PARAM_NUM =             10
     
     SEM_F_CLIENT =      "/sf_client"               # For reserving client and server roles during data transfer
     SEM_F_SERVER =      "/sf_server"               # And for signalling specific data transfers 
@@ -134,6 +136,7 @@ class ClearFrequencyService():
                 self.create_shm_obj(self.ANTENNA_SHM_NAME,          self.ANTENNA_SHM_SIZE       , ),
                 self.create_shm_obj(self.CLRFREQ_SHM_NAME,          self.CLR_BANDS_SHM_SIZE     , self.CLR_BANDS_ELEM_NUM), 
                 self.create_shm_obj(self.SITE_ID_SHM_NAME,          self.SITE_ID_SHM_SIZE       , self.SITE_ID_ELEM_NUM),
+                self.create_shm_obj(self.RADAR_ID_SHM_NAME,         self.RADAR_ID_SHM_SIZE      , ),
                 self.create_shm_obj(self.ACTIVE_CLIENTS_SHM_NAME,   self.ACTIVE_CLIENTS_SHM_SIZE, )
             ]
 
@@ -530,7 +533,7 @@ class ClearFrequencyService():
                 obj['shm_ptr'] = mmap.mmap(obj['shm_fd'], obj['size'], mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE) 
     
     
-    def send_samples(self, raw_samples, fcenter=None, meta_data=None):
+    def send_samples(self, raw_samples, radar_id, fcenter=None, meta_data=None):
         """ Waits for client requests, then processes server data, writes client 
             data, and requests server to process new data. When process is 
             terminated, the try/finally block cleans up.
@@ -636,6 +639,9 @@ class ClearFrequencyService():
                     # General: Write updated input data 
                     if input_data[i] is not None:
                         self.write_data(self.shm_objects[i], input_data[i])
+                        
+                # Write Radar ID
+                self.write_data(self.shm_objects[10], radar_id)
                 
                 self.sl_samples['sem'].release()
                 self.sf_samples['sem'].release()
@@ -655,7 +661,7 @@ class ClearFrequencyService():
                 
         return 
                 
-    def request_clr_freq(self, beam_num=None, sample_sep=None, clr_range=None, ):
+    def request_clr_freq(self, radar_id, beam_num=None, sample_sep=None, clr_range=None, ):
         """ Waits for client requests, then processes server data, writes client 
             data, and requests server to process new data. When process is 
             terminated, the try/finally block cleans up.\
@@ -701,6 +707,10 @@ class ClearFrequencyService():
                 if input_data[i - self.SAMPLE_PARAM_NUM] is not None:
                     print(f"[Frequency Client] Data Write: {self.shm_objects[i]['name']}") 
                     self.write_data(self.shm_objects[i], input_data[i - self.SAMPLE_PARAM_NUM])
+                
+            # Write Radar ID
+            print(f"[Frequency Client] Data Write: {self.shm_objects[10]['name']}")
+            self.write_data(self.shm_objects[10], radar_id)
                 
             self.sl_clrfreq['sem'].release()
             print("[clearFrequencyService] ClrFreq Semaphore Released ...")
@@ -876,8 +886,9 @@ clear_freq_range = [ int(12 * pow(10,6)), int(12.5 * pow(10,6)) ]
 meta_ant_full = meta_data['antenna_list']
 meta_ant_partial = [0,2] 
 trimmed_samples = []
-for i in meta_ant_partial:
-    trimmed_samples.append(raw_samples[i][:2000])
+# for i in meta_ant_partial:
+#     trimmed_samples.append(raw_samples[i][:2000])
+trimmed_samples = raw_samples[:2]
  
 # trimmed_samples = raw_samples[:2][:2000]
 
@@ -928,6 +939,7 @@ while (i < 20):
     meta_data['number_of_samples'] = 2500
     CFS.send_samples(
         raw_samples, 
+        radar_id=0,
         fcenter=12000,
         meta_data=meta_data
     )
@@ -935,9 +947,10 @@ while (i < 20):
     # Test dynamic SHM reallocation due to antenna resizing
     if trimmed_samples is not None:
         meta_data['antenna_list'] = meta_ant_partial
-        meta_data['number_of_samples'] = 2000
+        # meta_data['number_of_samples'] = 2000
         CFS.send_samples(
             trimmed_samples, 
+            radar_id=1,
             fcenter=12000,
             meta_data=meta_data
         )
@@ -946,6 +959,14 @@ while (i < 20):
 
 for i in range(0, 16):
     CFS.request_clr_freq(
+        radar_id=0,
+        beam_num=i,
+        clr_range=clear_freq_range, 
+        sample_sep=340,     # only necesary on first request or if changing
+    )
+    
+    CFS.request_clr_freq(
+        radar_id=1,
         beam_num=i,
         clr_range=clear_freq_range, 
         sample_sep=340,     # only necesary on first request or if changing

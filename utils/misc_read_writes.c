@@ -413,23 +413,23 @@ void read_clr_freq_bin(char *filename, freq_band *clr_bands, int *clr_start, int
 // }
 
 /**
- * @brief  Loads in the beam configuration from array_config.ini. 
+ * @brief  Loads in the array configuration from array_config.ini. 
  * @note   By DF
- * @param  *n_beams:    Number of beams
- * @param  *beam_sep:   Angle Offset between beams (in degrees)
+ * @param  *config_path:       Filepath of the array_config.ini file
  * @retval None
  */
-void read_array_config(const char *config_path, int *n_beams, double *beam_sep){
-    Config config;
+Config read_array_config(const char *config_path){
+    Config config = {0};
 
     if (ini_parse(config_path, config_ini_handler, &config) < 0) {
-        log_error("Can't load 'config.ini'\n");
-        return;
+        log_error("Can't load config_path: \n%s", config_path);
+        config.array_info.beam_sep = 0;
     }
 
+    return config;
     // *x_spacing = config.array_info.x_spacing;
-    *n_beams = config.array_info.nbeams;
-    *beam_sep = config.array_info.beam_sep;
+    // *n_beams = config.array_info.nbeams;
+    // *beam_sep = config.array_info.beam_sep;
 }
 
 void read_restrict(char *filepath, freq_band *restricted_freq, int *restricted_num) {
