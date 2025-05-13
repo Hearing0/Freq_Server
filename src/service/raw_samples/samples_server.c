@@ -161,12 +161,7 @@ struct shm_obj *objects[PARAM_NUM] = {
 int temp_ptrs_num = 0;
 void **temp_ptrs;
 
-fftw_complex **temp_samples = NULL;
-int temp_sample_sizes[] = {
-    ANTENNA_NUM,
-    SAMPLES_NUM,
-};
-fftw_complex *samples_storage = NULL;
+fftw_complex *temp_samples = NULL;
 fftw_complex *spectra_storage = NULL;
 double **avg_beam_spectrum = NULL;
 int avg_beam_spectrum_sizes[] = {
@@ -303,14 +298,14 @@ void print_temp_ptrs() {
     }
 }
 
-void read_sample_shm(fftw_complex **temp_samples, void *samples_shm_ptr, int antenna_num, int samples_num) {
+void read_sample_shm(fftw_complex *temp_samples, void *samples_shm_ptr, int antenna_num, int samples_num) {
     int *s_ptr = (int *) samples_shm_ptr;
     
     // Store sample data into complex form
     for (int i = 0; i < antenna_num; i++)
     {
         for (int j = 0; j < samples_num; j++) {
-            temp_samples[i][j] = s_ptr[i * samples_num + j * 2] + I * s_ptr[i * samples_num + j * 2 + 1];
+            temp_samples[i * samples_num + j] = s_ptr[i * samples_num + j * 2] + I * s_ptr[i * samples_num + j * 2 + 1];
 
             // Debug: Print 5 complex of each antenna batch
             // if (j < 4 || j > samples_num - 4 || j == 2499) {
@@ -487,11 +482,9 @@ void cleanup() {
     log_info( "Cleaned all objects ...");
     
     // Cleanup fftw ptrs
-    free_nested_fftw_ptr(temp_samples, 2, temp_sample_sizes);
+    // free_nested_fftw_ptr(temp_samples, 2, temp_sample_sizes);
+    fftw_free(temp_samples);
     log_debug( "Cleaned temp_samples ...");
-    // free_nested_fftw_ptr(samples_storage, 3, samples_storage_sizes);
-    fftw_free(samples_storage);
-    log_debug( "Cleaned samples_storage ...");
     fftw_free(spectra_storage);
     log_debug( "Cleaned spectra_storage ...");
     // cleanup_storage_fft();
@@ -664,19 +657,6 @@ void flag_debug() {
 void realloc_storage(int samples_num, int total_beams, int radar_num) {
     log_info( "samples_num Reallocation in progress...");
 
-    // If num_antennas or samples_num changed, Reallocate samples_storage
-    fftw_free(samples_storage);
-    log_trace( "Freed old samples_storage memory...");
-
-    // Reallocate samples_storage
-    samples_storage = fftw_alloc_complex(radar_num * STORAGE_NUM * STATIC_ANTENNA_NUM * samples_num);
-    if (samples_storage == NULL) {
-        log_fatal("Error allocating memory for samples_storage");
-        perror("Error allocating memory for samples_storage");
-        exit(EXIT_FAILURE);
-    }
-    log_trace( "Allocated new samples_storage memory...");
-
     // Realloc spectra_storage
     fftw_free(spectra_storage);
     spectra_storage = fftw_alloc_complex(radar_num * STORAGE_NUM * total_beams * samples_num);
@@ -750,29 +730,16 @@ void realloc_samples(int samples_num)
     log_trace("Sample SHM successfully cached...");
 
     // Free previously allocated memory for temp_samples
-    free_nested_fftw_ptr(temp_samples, 2, temp_sample_sizes);
-    temp_sample_sizes[0] = meta_data.num_antennas;
-    temp_sample_sizes[1] = samples_num;
+    fftw_free(temp_samples);
     log_trace("Freed old temp_samples memory...");
 
     // Reallocate temp_samples
-    temp_samples = (fftw_complex **)fftw_malloc(meta_data.num_antennas * sizeof(fftw_complex *));
+    temp_samples = fftw_alloc_complex(meta_data.num_antennas * samples_num);
     if (temp_samples == NULL)
     {
         log_fatal("Error reallocating memory for temp_samples pointers");
         perror("Error reallocating memory for temp_samples pointers");
         exit(EXIT_FAILURE);
-    }
-    for (int i = 0; i < meta_data.num_antennas; i++)
-    {
-        temp_samples[i] = (fftw_complex *)fftw_malloc(samples_num * sizeof(fftw_complex));
-        if (temp_samples[i] == NULL)
-        {
-            log_fatal("Error allocating memory for temp_samples elements");
-            perror("Error allocating memory for temp_samples elements");
-            exit(EXIT_FAILURE);
-        }
-        memset(temp_samples[i], 0, samples_num * sizeof(fftw_complex));
     }
     log_trace("Allocated new temp_samples memory...");
 }
@@ -920,26 +887,11 @@ int main() {
 
 
     // Allocate temp mem for shm varibles
-    temp_samples = (fftw_complex **)fftw_malloc(ANTENNA_NUM * sizeof(fftw_complex *));
+    // temp_samples = (fftw_complex **)fftw_malloc(ANTENNA_NUM * sizeof(fftw_complex *));
+    temp_samples = fftw_alloc_complex(ANTENNA_NUM * SAMPLES_NUM);
     if (temp_samples == NULL) {
         log_fatal("Error allocating memory for temp_samples pointers");
         perror("Error allocating memory for temp_samples pointers");
-        exit(EXIT_FAILURE);
-    }
-    for (int i = 0; i < ANTENNA_NUM; i++) {
-        temp_samples[i] = (fftw_complex *)fftw_malloc(SAMPLES_NUM * sizeof(fftw_complex));
-        if (temp_samples[i] == NULL) {
-            log_fatal("Error allocating memory for temp_samples elements");
-            perror("Error allocating memory for temp_samples elements");
-            exit(EXIT_FAILURE);
-        }
-        memset(temp_samples[i], 0, SAMPLES_NUM * sizeof(fftw_complex));
-    }
-
-    samples_storage = fftw_alloc_complex(radar_num * STORAGE_NUM * STATIC_ANTENNA_NUM * SAMPLES_NUM);
-    if (samples_storage == NULL) {
-        log_fatal("Error allocating memory for samples_storage");
-        perror("Error allocating memory for samples_storage");
         exit(EXIT_FAILURE);
     }
 
@@ -1240,22 +1192,9 @@ int main() {
 
             sem_post(sl_samples.sem);
 
-            // Store Sample Data
-            log_info( "Storing Sample Data...");
+            // Store Spectra Data
+            log_info( "Storing Spectra Data...");
             if (tcs_storage_i[cur_radar_id] < STORAGE_NUM) {
-                // Store Samples
-                for (int aidx = 0; aidx < meta_data.num_antennas; aidx++) {
-                    memcpy(
-                        &(samples_storage[
-                            cur_radar_id * STORAGE_NUM * STATIC_ANTENNA_NUM * samples_num +
-                            tcs_storage_i[cur_radar_id] * STATIC_ANTENNA_NUM * samples_num + 
-                            aidx * samples_num
-                        ]), 
-                        temp_samples[aidx], 
-                        samples_num * sizeof(fftw_complex)
-                    );
-                }
-                log_debug( "[TCS] Stored samples_storage[%d][%d/%d] successfully...", cur_radar_id, tcs_storage_i[cur_radar_id] + 1, STORAGE_NUM);
                 
                 // Fill Spectra Storage
                 process_all_beamformed_spectras(

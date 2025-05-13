@@ -431,7 +431,7 @@ void find_clear_freqs(double *spectrum, sample_meta_data meta_data, double delta
 }
 
 
-void calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_meta_data *meta_data, freq_band *restricted_bands, int restricted_num, int *clear_freq_range, double beam_angle, double smsep, freq_band *clr_bands) {
+void calc_clear_freq_on_raw_samples(fftw_complex *raw_samples, sample_meta_data *meta_data, freq_band *restricted_bands, int restricted_num, int *clear_freq_range, double beam_angle, double smsep, freq_band *clr_bands) {
     // int **sample_re = NULL;
     // int **sample_im = NULL;
     
@@ -618,7 +618,7 @@ void calc_clear_freq_on_raw_samples(fftw_complex **raw_samples, sample_meta_data
  * @param  *beamformed_samples: Output array for the beamformed samples.
  * @retval None
  */
-void phasing_and_beamforming(double beam_angle, int *clear_freq_range, sample_meta_data *meta_data, fftw_complex *phasing_vector, int *antennas, int num_samples, fftw_complex **raw_samples, fftw_complex *beamformed_samples)
+void phasing_and_beamforming(double beam_angle, int *clear_freq_range, sample_meta_data *meta_data, fftw_complex *phasing_vector, int *antennas, int num_samples, fftw_complex *raw_samples, fftw_complex *beamformed_samples)
 {
     // Calculate and Apply phasing vector
     float phase_increment = 0;
@@ -643,8 +643,8 @@ void phasing_and_beamforming(double beam_angle, int *clear_freq_range, sample_me
         double imag_sum = 0.0;
 
         for (int aidx = 0; aidx < meta_data->num_antennas; aidx++) {
-            double real_sample = creal(raw_samples[aidx][i]);
-            double imag_sample = cimag(raw_samples[aidx][i]);
+            double real_sample = creal(raw_samples[aidx * num_samples + i]);
+            double imag_sample = cimag(raw_samples[aidx * num_samples + i]);
             double real_phase = creal(phasing_vector[aidx]);
             double imag_phase = cimag(phasing_vector[aidx]);
             if (VERBOSE && i == 2499) {
@@ -676,7 +676,7 @@ void phasing_and_beamforming(double beam_angle, int *clear_freq_range, sample_me
  * @retval None
  */
 void process_all_beamformed_spectras(
-        fftw_complex **raw_samples, 
+        fftw_complex *raw_samples, 
         int clear_freq_range[],
         int smsep,
         freq_band *restricted_bands, 
@@ -1021,7 +1021,7 @@ void process_beam_clr_freq(
  * @retval None
  */
 clear_freq clear_freq_search(
-        fftw_complex **raw_samples, 
+        fftw_complex *raw_samples, 
         int clear_freq_range[],
         int cur_beam,
         int smsep,
