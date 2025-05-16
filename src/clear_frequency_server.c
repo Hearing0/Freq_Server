@@ -22,7 +22,7 @@
 
 
 // Logging Vars
-#define LOG_LEVEL 2                         // 0 = TRACE, 1 = DEBUG, 2 = INFO, 3 = WARN, 4 = ERROR, 5 = FATAL  
+#define LOG_LEVEL 1                         // 0 = TRACE, 1 = DEBUG, 2 = INFO, 3 = WARN, 4 = ERROR, 5 = FATAL  
 #define LOG_PREFIX "[CFS] %s"               // *Unused* Prefix for log messages
 #define LOG_FILEPATH "log/cfs/cfs.%s.log"
 
@@ -31,7 +31,6 @@
 #define FFTW_THREADS 2          // Number of threads to use for FFTW
 
 // Filepaths Vars
-#define CLR_STORE_FILEPATH 	"log/clr_band_storage/"
 #define ARRAY_CONFIG_FILEPATH "array_config.ini"
 
 // Default Length of Variables (some dynamically change during runtime)
@@ -49,7 +48,6 @@
 #define CLR_BANDS_MAX           6
 #endif
 #define CLR_STORAGE_NUM         10
-#define CLR_STORE_FILEPATH 	"log/clr_band_storage/"
 #define SITE_ID_ELEM            3                   // 3 = 3-letter identifier 
 
 #define SAMPLES_SHM_SIZE        (ANTENNA_NUM * SAMPLES_NUM * 2 * sizeof(int)) 
@@ -866,24 +864,21 @@ int main() {
 
     // Initialize Array Configuration
     log_info( "Initializing Array Configuration...");
-    if (access(ARRAY_CONFIG_FILEPATH, F_OK) == -1) {
-        perror("Error: Config file does not exist");
-        exit(EXIT_FAILURE);
-    }
-    if (access(ARRAY_CONFIG_FILEPATH, R_OK) == -1) {
-        perror("Error: Config file is not readable");
-        exit(EXIT_FAILURE);
-    }
-
-
     Config array_config = {0}; 
-    ini_parse(ARRAY_CONFIG_FILEPATH, config_ini_handler, &array_config);
-    if (array_config.array_info.beam_sep == 0) {
+    int ini_check = ini_parse(ARRAY_CONFIG_FILEPATH, config_ini_handler, &array_config);
+    if (ini_check < 0) {
         log_fatal( "Error reading array configuration file");
         perror("Error reading array configuration file");
         exit(EXIT_FAILURE);
     }
     int radar_num = array_config.array_info.nradars;
+    if (radar_num <= 0) {
+        log_warn( "Defaulting to 1 radar.");
+        log_warn( "If you are using a two radars, please set the number of radars under the [array_info] section: ");
+        log_warn( "\"nradars = 2\"");
+        if (radar_num == 0) log_error( "nradars is missing from the config file! Please add it to specify number of radars.");
+        radar_num = 1;
+    }
     int beam_total = array_config.array_info.nbeams;
     int cur_radar_id = 0;
     log_info( "Done initializing Array Configuration...");
@@ -966,7 +961,6 @@ int main() {
 
 
     
-    int clr_range[2] = {0};
     int cur_beam = 0;
     int sample_sep = -1;
     int old_antenna_num = ANTENNA_NUM;
@@ -987,6 +981,7 @@ int main() {
     int clr_storage_i[STATIC_RADAR_NUM] = {0};
     int tcs_storage_i[STATIC_RADAR_NUM] = {0};
     bool is_tcs_ready[STATIC_RADAR_NUM] = {false};
+    int clr_range[STATIC_RADAR_NUM][2] = {0};
     
     // Initialize FFTW for fast spectra storage
     // initialize_fftw_threads(FFTW_THREADS);
@@ -1003,7 +998,7 @@ int main() {
         exit(EXIT_FAILURE);
     }
 
-    // Debug: flag order
+    // Debug: Check Semaphore Flag order
     // flag_debug();
 
     // Continuously process clients via shared memory
@@ -1198,11 +1193,21 @@ int main() {
             // Store Spectra Data
             log_info( "Storing Spectra Data...");
             if (tcs_storage_i[cur_radar_id] < STORAGE_NUM) {
+
+                // If clr_range is not set, default clr_range to usrp_fcenter -/+ 0.5 * usrp_rf_rate
+                if (clr_range[0][0] == 0 && clr_range[0][1] == 0) {
+                    log_info( "Setting default clr_range...");
+                    for (int i = 0; i < STATIC_RADAR_NUM; i++) {
+                        clr_range[i][0] = (meta_data.usrp_fcenter * 1000 - (0.5 * meta_data.usrp_rf_rate)) / 1000;
+                        clr_range[i][1] = (meta_data.usrp_fcenter * 1000 + (0.5 * meta_data.usrp_rf_rate)) / 1000;
+                    }
+                    log_info( "Default clr_range set to %d -- %d", clr_range[0][0], clr_range[0][1]);
+                }
                 
                 // Fill Spectra Storage
                 process_all_beamformed_spectras(
                         temp_samples,
-                        clr_range, 
+                        clr_range[cur_radar_id], 
                         sample_sep, 
                         restricted_freq, 
                         restricted_num,
@@ -1262,13 +1267,6 @@ int main() {
                 log_debug("    sample_sep: %d", sample_sep);
             }
 
-            // Read Clear Range
-            if (*(int*) (clr_range_obj.shm_ptr) != 0) {
-                log_debug( "Clear Range reading...");
-                read_int(clr_range, clr_range_obj.shm_ptr, 2);
-                log_debug("    clr_range: %d -- %d", clr_range[0], clr_range[1]);
-            }
-            
             // Read Radar ID
             if (*(int*) (radar_id_obj.shm_ptr) >= 0) {
                 log_debug( "Radar ID reading...");
@@ -1282,6 +1280,34 @@ int main() {
                 }
             }
 
+            // Read Clear Range
+            if (*(int*) (clr_range_obj.shm_ptr) != 0) {
+                int old_clr_range[2] = {clr_range[cur_radar_id][0], clr_range[cur_radar_id][1]};
+
+                log_debug( "Clear Range reading...");
+                read_int(clr_range[cur_radar_id], clr_range_obj.shm_ptr, 2);
+
+                // If clr_range is in kHz, convert to Hz
+                if (clr_range[cur_radar_id][0] < 100000 || clr_range[cur_radar_id][1] < 100000) {
+                    clr_range[cur_radar_id][0] = clr_range[cur_radar_id][0] * 1000;
+                    clr_range[cur_radar_id][1] = clr_range[cur_radar_id][1] * 1000;
+                    log_debug("    clr_range: %d -- %d Hz", clr_range[cur_radar_id][0], clr_range[cur_radar_id][1]);
+                }
+
+                // If a radar's clr_range changed, reset TCS for that radar
+                log_debug("    old_clr_range: %d -- %d", old_clr_range[0], old_clr_range[1]);
+                if (clr_range[cur_radar_id][0] != old_clr_range[0] || clr_range[cur_radar_id][1] != old_clr_range[1]) {
+                    log_info( "Radar#%d's Clear Range changed...", cur_radar_id);
+                    log_info("    old_clr_range: %d -- %d", old_clr_range[0], old_clr_range[1]);
+                    log_info("    clr_range: %d -- %d", clr_range[cur_radar_id][0], clr_range[cur_radar_id][1]);
+
+
+                    is_tcs_ready[cur_radar_id] = false;
+                    tcs_storage_i[cur_radar_id] = 0;
+                }
+            }
+            
+
             // General: Process a beam-specific clrfreq
             log_info( "Clr Freq @ Beam #%d ...", cur_beam);
             
@@ -1291,7 +1317,7 @@ int main() {
                 log_info( "Starting Clear Freq Search...");
                 clear_freq_search(
                     temp_samples, 
-                    clr_range,
+                    clr_range[cur_radar_id],
                     cur_beam,
                     sample_sep,
                     restricted_freq, 
@@ -1321,7 +1347,7 @@ int main() {
                 process_beam_clr_freq(
                     avg_beam_spectrum,
                     cur_beam,
-                    clr_range,
+                    clr_range[cur_radar_id],
                     sample_sep,
                     restricted_freq, 
                     restricted_num,
@@ -1344,6 +1370,7 @@ int main() {
                 if (clr_bands[i].f_start == 0 || clr_bands[i].f_end == 0 || clr_bands[i].noise == 0 ||
                     clr_bands[i].f_start == RAND_MAX || clr_bands[i].f_end == RAND_MAX || clr_bands[i].noise == RAND_MAX) {
                     log_error("ERROR: Clear Freq Band[%d] is abnornal", i);
+                    log_error("Clear Freq Band[%d][%s]: | %dHz -- Noise: %f -- %dHz |", i, clr_bands[i].is_selected ? "Selected" : "Free", clr_bands[i].f_start, clr_bands[i].noise, clr_bands[i].f_end);
                     log_error("ERROR: There is likely a semaphore leak or error in CFS order of operations, please close and restart all related processes.");
                 }
             }

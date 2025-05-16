@@ -557,6 +557,11 @@ class ClearFrequencyService():
         if self.soft_kill is True:
             return
                 
+        # Fail: If no antennas, skip to recover on next Clear Search Cycle 
+        if meta_data is None or len(meta_data['antenna_list']) == 0:
+            print("[clearFrequencyService] ERROR: No antennas found. Skipping...")
+            return
+                
         # Get in Queue
         active_clients = self.increment_active_clients()
         print(f"[clearFrequencyService] Active clients count: {active_clients}")
@@ -827,11 +832,7 @@ class ClearFrequencyService():
             print("[clearFrequencyService] Recieved Server Response. Reading Clear Freq data...\n\n")
             
             self.sl_clrfreq['sem'].release()
-                
-        
-        
-        
-                                
+
 def read_sample_pickle(pickle_file):
     """ Reads in raw sample data and sample meta data from pickle for a Python 
     script. 
@@ -934,7 +935,8 @@ def flatten_raw_into_int_bytes(arr):
 
 i = 0
 while (i < 20):
-# while (True):   
+    clear_freq_range = [int(12 * pow(10,6)), int(12.5 * pow(10,6))]
+   
     meta_data['antenna_list'] = meta_ant_full
     meta_data['number_of_samples'] = 2500
     CFS.send_samples(
@@ -957,20 +959,24 @@ while (i < 20):
     
     i += 1
 
-for i in range(0, 16):
-    CFS.request_clr_freq(
-        radar_id=0,
-        beam_num=i,
-        clr_range=clear_freq_range, 
-        sample_sep=340,     # only necesary on first request or if changing
-    )
-    
-    CFS.request_clr_freq(
-        radar_id=1,
-        beam_num=i,
-        clr_range=clear_freq_range, 
-        sample_sep=340,     # only necesary on first request or if changing
-    )
+    for j in range(0, 3):
+        clear_freq_range = [int(12 * pow(10,6)), int(12.5 * pow(10,6))]
+        CFS.request_clr_freq(
+            radar_id=0,
+            beam_num=j,
+            clr_range=clear_freq_range, 
+            sample_sep=340,     # only necesary on first request or if changing
+        )
+        
+        # Test: Ensure radars have separate clear frequency ranges
+        clear_freq_range = [int(12 * pow(10,6)), int(12.25 * pow(10,6))]
+        CFS.request_clr_freq(
+            radar_id=1,
+            beam_num=j,
+            clr_range=clear_freq_range, 
+            sample_sep=340,     # only necesary on first request or if changing
+        )
+        
 
     # break
 
