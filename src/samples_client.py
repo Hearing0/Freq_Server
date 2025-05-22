@@ -49,6 +49,7 @@ class ClearFrequencyService():
     CLR_BANDS_SHM_SIZE      = (1 * INT_SIZE * 3)     # TODO: Round to convert freqs to int again 
     SITE_ID_SHM_SIZE        = (3 * CHAR_SIZE)
     RADAR_ID_SHM_SIZE       = (1 * INT_SIZE)
+    CHANNEL_ID_SHM_SIZE     = (1 * INT_SIZE)
     ACTIVE_CLIENTS_SHM_SIZE = (1 * INT_SIZE)
 
     RETRY_ATTEMPTS = 3
@@ -66,6 +67,7 @@ class ClearFrequencyService():
     CLRFREQ_SHM_NAME =          "/clear_freq"
     SITE_ID_SHM_NAME =          "/site_id"
     RADAR_ID_SHM_NAME =         "/radar_id"
+    CHANNEL_ID_SHM_NAME =       "/channel_id"
     ACTIVE_CLIENTS_SHM_NAME =   "/active_clients"   # For Debugging
 
     # Semaphore Constants
@@ -137,6 +139,7 @@ class ClearFrequencyService():
                 self.create_shm_obj(self.CLRFREQ_SHM_NAME,          self.CLR_BANDS_SHM_SIZE     , self.CLR_BANDS_ELEM_NUM), 
                 self.create_shm_obj(self.SITE_ID_SHM_NAME,          self.SITE_ID_SHM_SIZE       , self.SITE_ID_ELEM_NUM),
                 self.create_shm_obj(self.RADAR_ID_SHM_NAME,         self.RADAR_ID_SHM_SIZE      , ),
+                self.create_shm_obj(self.CHANNEL_ID_SHM_NAME,       self.CHANNEL_ID_SHM_SIZE    , ),
                 self.create_shm_obj(self.ACTIVE_CLIENTS_SHM_NAME,   self.ACTIVE_CLIENTS_SHM_SIZE, )
             ]
 
@@ -368,9 +371,9 @@ class ClearFrequencyService():
                 interleaved_data[0::2] = array_data_np.real.astype(np.int32).ravel()
                 interleaved_data[1::2] = array_data_np.imag.astype(np.int32).ravel()
                 
-                # Print set per 2500 elemnents (till 5 set) in interleaved_data to verify
+                # Print set per 2500 elements (till 3 sets) in interleaved_data to verify
                 for i in range(0, interleaved_data.size // 5000):
-                    print(f"[Frequency Client] interleaved_data: ", interleaved_data[i * 5000:(i + 1) * 5000], "...")
+                    if (i < 3): print(f"[Frequency Client] interleaved_data: ", interleaved_data[i * 5000:(i + 1) * 5000], "...")
                 
                 # Write directly to shared memory
                 obj['shm_ptr'].seek(0)
@@ -439,8 +442,8 @@ class ClearFrequencyService():
                 obj['shm_ptr'].write(struct.pack(dtype * 1, flattened_data))
         
         
+        # If element size is incorrect, Display error
         except AttributeError as e:
-            # Display error if element size is incorrect
             print("[Frequency Client] ERROR: Element Size is incorrect. send()'s parameters were likely not assigned properly. Please verify...")
             print(f"AttributeError: {e}")
             print(f"Object: {obj}, Attributes: {dir(obj)}")
@@ -533,7 +536,7 @@ class ClearFrequencyService():
                 obj['shm_ptr'] = mmap.mmap(obj['shm_fd'], obj['size'], mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE) 
     
     
-    def send_samples(self, raw_samples, radar_id, fcenter=None, meta_data=None):
+    def send_samples(self, raw_samples, radar_id, channel_id, fcenter=None, meta_data=None):
         """ Waits for client requests, then processes server data, writes client 
             data, and requests server to process new data. When process is 
             terminated, the try/finally block cleans up.
@@ -579,6 +582,14 @@ class ClearFrequencyService():
                 print("[clearFrequencyService] Requesting Initialization Semaphore...")
                 self.sl_init['sem'].acquire()
                 print("[clearFrequencyService] Initialization Semaphore Acquired...")
+                
+                # Read Radar ID
+                print(f"[Frequency Client] Data Write: {self.shm_objects[10]['name']}")
+                self.write_data(self.shm_objects[10], radar_id)
+                
+                # Read Channel ID
+                print(f"[Frequency Client] Data Write: {self.shm_objects[11]['name']}")
+                self.write_data(self.shm_objects[11], channel_id)
 
                 # If meta_data has changed
                 if self.old_meta_data != meta_data_list:
@@ -666,7 +677,7 @@ class ClearFrequencyService():
                 
         return 
                 
-    def request_clr_freq(self, radar_id, beam_num=None, sample_sep=None, clr_range=None, ):
+    def request_clr_freq(self, radar_id, channel_id, beam_num=None, sample_sep=None, clr_range=None, ):
         """ Waits for client requests, then processes server data, writes client 
             data, and requests server to process new data. When process is 
             terminated, the try/finally block cleans up.\
@@ -716,6 +727,10 @@ class ClearFrequencyService():
             # Write Radar ID
             print(f"[Frequency Client] Data Write: {self.shm_objects[10]['name']}")
             self.write_data(self.shm_objects[10], radar_id)
+            
+            # Write Channel ID
+            print(f"[Frequency Client] Data Write: {self.shm_objects[11]['name']}")
+            self.write_data(self.shm_objects[11], channel_id)
                 
             self.sl_clrfreq['sem'].release()
             print("[clearFrequencyService] ClrFreq Semaphore Released ...")
@@ -942,6 +957,7 @@ while (i < 20):
     CFS.send_samples(
         raw_samples, 
         radar_id=0,
+        channel_id=0,
         fcenter=12000,
         meta_data=meta_data
     )
@@ -953,6 +969,7 @@ while (i < 20):
         CFS.send_samples(
             trimmed_samples, 
             radar_id=1,
+            channel_id=0,
             fcenter=12000,
             meta_data=meta_data
         )
@@ -963,6 +980,7 @@ while (i < 20):
         clear_freq_range = [int(12 * pow(10,6)), int(12.5 * pow(10,6))]
         CFS.request_clr_freq(
             radar_id=0,
+            channel_id=0,
             beam_num=j,
             clr_range=clear_freq_range, 
             sample_sep=340,     # only necesary on first request or if changing
@@ -972,6 +990,7 @@ while (i < 20):
         clear_freq_range = [int(12 * pow(10,6)), int(12.25 * pow(10,6))]
         CFS.request_clr_freq(
             radar_id=1,
+            channel_id=1,
             beam_num=j,
             clr_range=clear_freq_range, 
             sample_sep=340,     # only necesary on first request or if changing
