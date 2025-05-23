@@ -77,7 +77,7 @@ void write_spectrum_csv(char *filename, fftw_complex *spectrum, double *freq_vec
 
     // Generate timestamp
     time(&raw_time);
-    time_info = localtime(&raw_time);
+    time_info = gmtime(&raw_time);
     strftime(timestamp, buffer_size, "%Y.%m.%d_%H:%M:%S", time_info);
     snprintf(name, sizeof(name), filename, timestamp, "csv");
 
@@ -114,7 +114,7 @@ void write_spectrum_mag_csv(char *filename, double *spectrum, double *freq_vecto
 
     // Generate timestamp
     time(&raw_time);
-    time_info = localtime(&raw_time);
+    time_info = gmtime(&raw_time);
     strftime(timestamp, buffer_size, "%Y.%m.%d_%H:%M:%S", time_info);
     snprintf(name, sizeof(name), filename, timestamp, "csv");
 
@@ -141,7 +141,7 @@ void write_spectrum_mag_bin(char *filename, double *spectrum, double *freq_vecto
 
     // Generate timestamp
     time(&raw_time);
-    time_info = localtime(&raw_time);
+    time_info = gmtime(&raw_time);
     strftime(timestamp, buffer_size, "%Y.%m.%d_%H:%M:%S", time_info);
     snprintf(name, sizeof(name), filename, timestamp, "bin");
 
@@ -171,7 +171,7 @@ void write_clr_freq_csv(char *filename, freq_band *clr_bands) {
 
     // Generate timestamp
     time(&raw_time);
-    time_info = localtime(&raw_time);
+    time_info = gmtime(&raw_time);
     strftime(timestamp, buffer_size, "%Y.%m.%d_%H:%M:%S", time_info);
     snprintf(name, sizeof(name), filename, timestamp, "csv");
     
@@ -209,7 +209,7 @@ void write_clr_freq_bin(char *filename, freq_band *clr_bands) {
 
     // Generate timestamp
     time(&raw_time);
-    time_info = localtime(&raw_time);
+    time_info = gmtime(&raw_time);
     strftime(timestamp, buffer_size, "%Y.%m.%d_%H:%M:%S", time_info);
     snprintf(name, sizeof(name), filename, timestamp, "bin");
 
@@ -224,13 +224,20 @@ void write_clr_freq_bin(char *filename, freq_band *clr_bands) {
     int clr_start = RAND_MAX;
     int clr_end = 0;
     for (int i = 0; i < CLR_BANDS_MAX; i++) {
+        // TODO: Remove this line after moving write_clr_freq_bin to after clear freq reservations
+        clr_bands[i].is_selected = false; 
         if (clr_bands[i].f_start < clr_start && clr_bands[i].noise < RAND_MAX) clr_start = clr_bands[i].f_start;
         if (clr_bands[i].f_end > clr_end && clr_bands[i].noise < RAND_MAX) clr_end = clr_bands[i].f_end;
     }    
 
+    // // print clear_bands before writing
+    // for (int i = 0; i < CLR_BANDS_MAX; i++) {
+    //     log_warn("Clear Freq Band[%d][%d]: | %dHz -- Noise: %f -- %dHz |\n", i, clr_bands[i].is_selected , clr_bands[i].f_start, clr_bands[i].noise, clr_bands[i].f_end);
+    // }
+
     fwrite(&clr_start, sizeof(int), 1, file);
     fwrite(&clr_end, sizeof(int), 1, file);
-    fwrite(clr_bands, sizeof(freq_band), 1, file);
+    fwrite(clr_bands, sizeof(freq_band), CLR_BANDS_MAX, file);
 
     fclose(file);
 }
@@ -461,7 +468,7 @@ void get_timestamp( char* buffer){
 	time_t rawtime;
 	struct tm *timeinfo;
 	time(&rawtime);
-	timeinfo = localtime (&rawtime);
+	timeinfo = gmtime (&rawtime);
 	strftime (buffer,32,"%G.%m%d.%H%M%S",timeinfo);
 }
 
@@ -492,7 +499,7 @@ FILE* get_log_file( char *filepath) {
     return file;
 }
 
-FILE* init_log(int level, char *filepath) {
+FILE* init_log(int level, int file_level, char *filepath) {
     log_set_level(level);
 	log_set_quiet(0);
 	FILE *file = get_log_file(filepath);
