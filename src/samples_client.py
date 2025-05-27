@@ -711,15 +711,10 @@ class ClearFrequencyService():
             print("[clearFrequencyService] Requesting ClrFreq Semaphore...")
             self.sl_clrfreq['sem'].acquire()
             print("[clearFrequencyService] ClrFreq Semaphore Acquired...")
-            
+
             for i in range(self.SAMPLE_PARAM_NUM, self.SAMPLE_PARAM_NUM + 3):
                 
-                # If sample separation present, send and update, else skip
-                if input_data[i - self.SAMPLE_PARAM_NUM] is not None and self.old_smsep != input_data[i - self.SAMPLE_PARAM_NUM]:
-                    self.old_smsep = input_data[i - self.SAMPLE_PARAM_NUM]
-                else: continue
-                
-                # Write present data
+                # If data present, write to SHM
                 if input_data[i - self.SAMPLE_PARAM_NUM] is not None:
                     print(f"[Frequency Client] Data Write: {self.shm_objects[i]['name']}") 
                     self.write_data(self.shm_objects[i], input_data[i - self.SAMPLE_PARAM_NUM])

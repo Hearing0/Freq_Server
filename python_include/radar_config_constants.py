@@ -15,7 +15,11 @@ INTEGRATION_PERIOD_SYNC_TIME = .2
 MIN_CLRFREQ_DELAY = .50
 
 
-CLRFREQ_RES = 500 # fft frequency resolution for clear freq in Hz (Do NOT use scientific notation; it will output incorrect clr freqs)
+# Frequency Resolution (in Hz) 
+# Do NOT use scientific notation
+CLRFREQ_RES = 400 # Radar and USRP frequency resolution
+CFSFREQ_RES = 100 # Clear Frequency Service's Clear frequency resolution after spectral averaging (must be a divisor of CLRFREQ_RES)
+
 MAX_AGE_OF_AUTO_CLEAR_FREQ = 30 # in sec, if data is older a new clear freq record if triggered
 PAUSE_TIME_BEFORE_AUTO_CLEAR_FREQ = 0.0 # is seconds
 

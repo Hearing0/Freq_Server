@@ -224,16 +224,9 @@ void write_clr_freq_bin(char *filename, freq_band *clr_bands) {
     int clr_start = RAND_MAX;
     int clr_end = 0;
     for (int i = 0; i < CLR_BANDS_MAX; i++) {
-        // TODO: Remove this line after moving write_clr_freq_bin to after clear freq reservations
-        clr_bands[i].is_selected = false; 
         if (clr_bands[i].f_start < clr_start && clr_bands[i].noise < RAND_MAX) clr_start = clr_bands[i].f_start;
         if (clr_bands[i].f_end > clr_end && clr_bands[i].noise < RAND_MAX) clr_end = clr_bands[i].f_end;
     }    
-
-    // // print clear_bands before writing
-    // for (int i = 0; i < CLR_BANDS_MAX; i++) {
-    //     log_warn("Clear Freq Band[%d][%d]: | %dHz -- Noise: %f -- %dHz |\n", i, clr_bands[i].is_selected , clr_bands[i].f_start, clr_bands[i].noise, clr_bands[i].f_end);
-    // }
 
     fwrite(&clr_start, sizeof(int), 1, file);
     fwrite(&clr_end, sizeof(int), 1, file);
@@ -437,7 +430,7 @@ void read_radar_config(char *filepath, int *clr_freq_res) {
     }
 
     char line[256];
-    char word[12] = {"\0"};
+    char word[256] = {"\0"};
     int value = 0;
     int i = 0;
     int result = 0;
@@ -446,20 +439,25 @@ void read_radar_config(char *filepath, int *clr_freq_res) {
         result = sscanf(line, "%s = %d", &word, &value);
         word[11] = '\0'; // Ensure null-termination     
 
+        // Debug: Print word and value
+        // log_trace("Read line: %s, word: %s, value: %d", line, word, value);
+
         // If sscanf finds CLR_FREQ_RES, store it
-        if (strcmp(word, "CLRFREQ_RES\0") == 0) {
+        if (strcmp(word, "CFSFREQ_RES\0") == 0) {
             *clr_freq_res = value;
-            log_trace("CLR_FREQ_RES: %d", *clr_freq_res);
+            log_trace("CFSFREQ_RES: %d", *clr_freq_res);
             break;
         }
     }
 
     // Warn if low frequency resolution (can result in corrupted clr freq bands)
-    if (*clr_freq_res < 500) {
-        log_warn("CLR_FREQ_RES is extremely low (%d < 500). This is known to result in corrupted clear frequency bands!", *clr_freq_res);
-        log_warn("Please check radar_config_constants.py file.");
-        exit(EXIT_FAILURE);
+    if (*clr_freq_res <= 0) {
+        log_error("CFSFREQ_RES is not set or is invalid (%d <= 0). Please check radar_config_constants.py file.", *clr_freq_res);
     }
+    else if (*clr_freq_res < 500) {
+        log_warn("CFSFREQ_RES is extremely low (%d < 500). This can result in corrupted clear frequency bands!", *clr_freq_res);
+        log_warn("Please check radar_config_constants.py file.");
+    } 
 
     fclose(file);
 }
