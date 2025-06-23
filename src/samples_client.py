@@ -947,56 +947,27 @@ i = 0
 while (i < 20):
     clear_freq_range = [int(12 * pow(10,6)), int(12.5 * pow(10,6))]
    
-    meta_data['antenna_list'] = meta_ant_full
-    meta_data['number_of_samples'] = 2500
-    CFS.send_samples(
-        raw_samples, 
-        radar_id=0,
-        channel_id=0,
-        fcenter=12000,
-        meta_data=meta_data
-    )
+    for r_idx in range(0, 2):
+        for c_idx in range(0, 5):
+            
+            meta_data['antenna_list'] = meta_ant_full
+            meta_data['number_of_samples'] = 2500
+            CFS.send_samples(
+                raw_samples, 
+                radar_id=r_idx,
+                channel_id=0,
+                fcenter=12000,
+                meta_data=meta_data
+            )
 
-    # Test dynamic SHM reallocation due to antenna resizing
-    if trimmed_samples is not None:
-        meta_data['antenna_list'] = meta_ant_partial
-        # meta_data['number_of_samples'] = 2000
-        CFS.send_samples(
-            trimmed_samples, 
-            radar_id=1,
-            channel_id=0,
-            fcenter=12000,
-            meta_data=meta_data
-        )
-    
+            for beam_idx in range(0, 15, 2):
+                clear_freq_range = [int(12 * pow(10,6)), int(12.5 * pow(10,6))]
+                CFS.request_clr_freq(
+                    radar_id=r_idx,
+                    channel_id=c_idx,
+                    beam_num=beam_idx,
+                    clr_range=clear_freq_range, 
+                    sample_sep=340,     # only necesary on first request or if changing
+                )
+            
     i += 1
-
-    for j in range(0, 3):
-        clear_freq_range = [int(12 * pow(10,6)), int(12.5 * pow(10,6))]
-        CFS.request_clr_freq(
-            radar_id=0,
-            channel_id=0,
-            beam_num=j,
-            clr_range=clear_freq_range, 
-            sample_sep=340,     # only necesary on first request or if changing
-        )
-        
-        # Test: Ensure radars have separate clear frequency ranges
-        clear_freq_range = [int(12 * pow(10,6)), int(12.25 * pow(10,6))]
-        CFS.request_clr_freq(
-            radar_id=1,
-            channel_id=1,
-            beam_num=j,
-            clr_range=clear_freq_range, 
-            sample_sep=340,     # only necesary on first request or if changing
-        )
-        
-
-    # break
-
-        
-    #     # break
-
-    #     CFS.request_clr_freq(
-    #         beam_num=1,
-    #     )
