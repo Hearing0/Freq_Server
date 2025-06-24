@@ -955,7 +955,7 @@ while (i < 20):
             CFS.send_samples(
                 raw_samples, 
                 radar_id=r_idx,
-                channel_id=0,
+                channel_id=c_idx,
                 fcenter=12000,
                 meta_data=meta_data
             )
