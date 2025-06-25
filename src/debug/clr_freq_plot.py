@@ -8,11 +8,11 @@ USE_CSV = True  # Switch to False when implementing .bin support
 FILE_EXTENSION = '.csv' if USE_CSV else '.bin'
 
 # Path constants
-BASE_PATH = pathlib.Path('/path/to/base_directory')
+BASE_PATH = pathlib.Path('/logs/fft_spectrum')
 
 CSV_DIR = BASE_PATH / 'csv_files'
 BIN_DIR = BASE_PATH / 'bin_files'
-PLOT_DIR = BASE_PATH / 'plots'
+PLOT_DIR = BASE_PATH / ''
 
 # Ensure directories exist
 PLOT_DIR.mkdir(parents=True, exist_ok=True)

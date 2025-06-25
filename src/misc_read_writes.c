@@ -175,7 +175,7 @@ void write_clr_freq_csv(char *filename, freq_band *clr_bands) {
     strftime(timestamp, buffer_size, "%Y.%m.%d_%H:%M:%S", time_info);
     snprintf(name, sizeof(name), filename, timestamp, "csv");
     
-    FILE *file = fopen(filename, "w");
+    FILE *file = fopen(name, "w");
     if (file == NULL) {
         file_access_error(name);
         return;

@@ -943,9 +943,10 @@ def flatten_raw_into_int_bytes(arr):
 # Test flatten speed
 # timeit.timeit()
 
-i = 0
+clear_freq_range = [int(12 * pow(10,6)), int(12.4 * pow(10,6))]
+
+i = 19
 while (i < 20):
-    clear_freq_range = [int(12 * pow(10,6)), int(12.5 * pow(10,6))]
    
     for r_idx in range(0, 2):
         for c_idx in range(0, 5):
@@ -961,7 +962,6 @@ while (i < 20):
             )
 
             for beam_idx in range(0, 15, 2):
-                clear_freq_range = [int(12 * pow(10,6)), int(12.5 * pow(10,6))]
                 CFS.request_clr_freq(
                     radar_id=r_idx,
                     channel_id=c_idx,

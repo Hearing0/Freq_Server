@@ -28,7 +28,7 @@
 
 // Config and Debug Flags
 #define SPECTRAL_AVGING 1
-#define BIN_OR_CSV_LOG  0   // 0 for Bin, otherwise CSV
+#define BIN_OR_CSV_LOG  1   // 0 for Bin, otherwise CSV
 
 #define TEST_SAMPLES 0
 #define TEST_CLR_RANGE 1
