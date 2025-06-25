@@ -27,7 +27,6 @@
 
 
 // Config and Debug Flags
-#define SPECTRAL_AVGING 1
 #define BIN_OR_CSV_LOG  0   // 0 for Bin, otherwise CSV
 
 #define TEST_SAMPLES 0
@@ -496,10 +495,7 @@ void calc_clear_freq_on_raw_samples(
     }
 
     /// Spectrum Calculation and Averaging; delinate Transmitters and filter out noise
-    // Spectrum Averging (avg of 4 fft)
-    // if (SPECTRAL_AVGING) {
     log_debug("=----Starting Spectral Average----=");
-    // int avg_ratio = (int) (delta_f / clr_freq_res);
     int num_avg_samples = num_samples / avg_ratio; 
     // log_trace("num_avg_samples: %d", num_avg_samples);
     // log_trace("avg_ratio: %d", avg_ratio);
@@ -594,7 +590,6 @@ void calc_clear_freq_on_raw_samples(
     
 
     // Save data to csv
-    // bool save_spectra = false;
     if (access(SPECTRAL_LOG_FILE, F_OK) == 0) {        
         // Write logs if its folder accessable
         if (BIN_OR_CSV_LOG == 0) {
@@ -873,7 +868,7 @@ void process_avg_beam_spectra(
             }   
         }
 
-        // Div by the total elements summed (default: 4 avg ratio * 20 3-sec spectra)
+        // Div by the total elements summed (default: avg ratio of 4 * 20 3-sec spectras)
         avg_beam_spectra[cur_beam][k] /= (avg_ratio * spectra_num);
         if (k == 5) log_trace("         avg_spectra[%d][%d]: %f", cur_beam, k, avg_beam_spectra[cur_beam][k]);
     }
@@ -881,20 +876,21 @@ void process_avg_beam_spectra(
     log_trace("     ====> Min Spectral Avg took (s): %lf", ((double) (t_avg)) / (CLOCKS_PER_SEC));
     log_trace("     beamformed_spectra[%d][0]: %f", cur_beam, avg_beam_spectra[cur_beam][0]);
 
-    // // Save data to csv
-    // if (access(SPECTRAL_LOG_FILE, F_OK) == 0) {        
-    //     // Write logs if its folder accessable
-    //     if (BIN_OR_CSV_LOG == 0) {
-    //         write_spectrum_mag_bin(SPECTRUM_FILE, avg_beam_spectra, avg_freq_vector, num_avg_samples);
-    //         write_clr_freq_bin(CLR_FREQ_FILE, clr_bands);                                           // Used to plot Clear Freq Bands w/ spectrum_plot.clr_freq.py
-    //     } else {
-    //         // write_sample_mag_csv(sample_im_file, sample_im, freq_vector, meta_data);                                                     // Used to check complex Samples after Beamforming; ...
-    //         // write_sample_mag_csv(sample_re_file, sample_re, freq_vector, meta_data);                                                     // Plot w/ sample_plot.py
-    //         write_spectrum_mag_csv(SPECTRUM_FILE, avg_beam_spectra, avg_freq_vector, num_avg_samples);  // Spectrum after Spectrum FFT averaging; plot w/ spectrum_plot.py
-    //         write_clr_freq_csv(CLR_FREQ_FILE, clr_bands);
-    //     }
-    //     log_trace("[CFS] \'save_spectra\' found; Logged individual FFT Spectrum and Clear Frequency batches.");
-    // } else log_trace("[CFS] \'save_spectra\' not found. Not logging spectra nor clr_frequency.");
+    // Save data to csv
+    if (access(SPECTRAL_LOG_FILE, F_OK) == 0) {        
+        char* avg_spectra_filename[128] = {0};
+        snprintf(avg_spectra_filename, sizeof(avg_spectra_filename), "%s.avg", SPECTRUM_FILE);
+
+        // Write logs if its folder accessable
+        if (BIN_OR_CSV_LOG == 0) {
+            write_spectrum_mag_bin(avg_spectra_filename, avg_beam_spectra, avg_freq_vector, num_avg_samples);
+        } else {
+            // write_sample_mag_csv(sample_im_file, sample_im, freq_vector, meta_data);                                                     // Used to check complex Samples after Beamforming; ...
+            // write_sample_mag_csv(sample_re_file, sample_re, freq_vector, meta_data);                                                     // Plot w/ sample_plot.py
+            write_spectrum_mag_csv(avg_spectra_filename, avg_beam_spectra, avg_freq_vector, num_avg_samples);  // Spectrum after Spectrum FFT averaging; plot w/ spectrum_plot.py
+        }
+        log_trace("[CFS] \'save_spectra\' found; Logged individual FFT Spectrum and Clear Frequency batches.");
+    } else log_trace("[CFS] \'save_spectra\' not found. Not logging spectra nor clr_frequency.");
 }
 
 /**
@@ -962,6 +958,19 @@ void process_beam_clr_freq(
     find_clear_freqs(avg_beam_spectra[cur_beam], *meta_data, delta_f_avg, clear_freq_range[0], clear_freq_range[1], clear_bw, clr_bands);
     t2 = clock();
     log_trace("     find_clear_freqs(s): %lf", cur_beam, ((double) (t2 - t1)) / (CLOCKS_PER_SEC));
+
+    // Save data to csv
+    if (access(SPECTRAL_LOG_FILE, F_OK) == 0) {        
+        char* avg_clr_freq_filename = {0};
+        sprintf(avg_clr_freq_filename, "%s.avg", CLR_FREQ_FILE); 
+        // Write logs if its folder accessable
+        if (BIN_OR_CSV_LOG == 0) {
+            write_clr_freq_bin(avg_clr_freq_filename, clr_bands);                                           // Used to plot Clear Freq Bands w/ spectrum_plot.clr_freq.py
+        } else {
+            write_clr_freq_csv(avg_clr_freq_filename, clr_bands);
+        }
+        log_trace("[CFS] \'save_spectra\' found; Logged individual FFT Spectrum and Clear Frequency batches.");
+    } else log_trace("[CFS] \'save_spectra\' not found. Not logging spectra nor clr_frequency.");
 }
 
 /**
