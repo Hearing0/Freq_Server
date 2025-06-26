@@ -174,6 +174,8 @@ void **temp_ptrs;
 
 fftw_complex *temp_samples = NULL;
 fftw_complex *spectra_storage = NULL;
+fftw_complex *sample_storage = NULL;
+
 double **avg_beam_spectrum = NULL;
 int avg_beam_spectrum_sizes[] = {
     BEAM_NUM,
@@ -498,6 +500,8 @@ void cleanup() {
     log_debug( "Cleaned temp_samples ...");
     fftw_free(spectra_storage);
     log_debug( "Cleaned spectra_storage ...");
+    fftw_free(sample_storage);
+    log_debug( "Cleaned sample_storage ...");
     // cleanup_storage_fft();
     // log_debug( "Cleaned fftw plan ...");
     
@@ -679,6 +683,16 @@ void realloc_storage(int samples_num, int total_beams, int radar_num, int avg_ra
         exit(EXIT_FAILURE);
     }
     log_trace( "Allocated new spectra_storage memory...");
+
+    // Realloc sample_storage
+    fftw_free(sample_storage);
+    sample_storage = fftw_alloc_complex(radar_num * STORAGE_NUM * total_beams * ANTENNA_NUM * samples_num);
+    if (sample_storage == NULL) {
+        log_fatal("Error allocating memory for sample_storage");
+        perror("Error allocating memory for sample_storage");
+        exit(EXIT_FAILURE);
+    }
+    log_trace( "Allocated new sample_storage memory...");
     
     // Realloc avg_beam_spectrum
     free_nested_ptr(avg_beam_spectrum, 2, avg_beam_spectrum_sizes);
@@ -962,6 +976,12 @@ int main() {
         exit(EXIT_FAILURE);
     }
 
+    sample_storage = fftw_alloc_complex(radar_num * STORAGE_NUM * beam_total * ANTENNA_NUM * SAMPLES_NUM);
+    if (sample_storage == NULL) {
+        log_fatal("Error allocating memory for sample_storage");
+        perror("Error allocating memory for sample_storage");
+        exit(EXIT_FAILURE);
+    }
 
 
     // Get Clear Frequency Resolution 
@@ -1069,6 +1089,7 @@ int main() {
         beam_total,
         0
     };
+    int avg_ant_pwr[ANTENNA_NUM] = {0};
     int clr_storage_i[STATIC_RADAR_NUM] = {0};
     int tcs_storage_i[STATIC_RADAR_NUM] = {0};
     bool is_tcs_ready[STATIC_RADAR_NUM] = {false};
@@ -1294,6 +1315,13 @@ int main() {
                     }
                     log_info( "Default clr_range set to %d -- %d", clr_range[0][0], clr_range[0][1]);
                 }
+
+                size_t s_storage_idx = (cur_radar * STORAGE_NUM + tcs_storage_i[cur_radar]) * ANTENNA_NUM * samples_num;
+                memcpy(
+                    &(sample_storage[s_storage_idx]),
+                    temp_samples,
+                    ANTENNA_NUM * samples_num * sizeof(fftw_complex)
+                );
                 
                 // Fill Spectra Storage
                 process_all_beamformed_spectras(
@@ -1463,6 +1491,15 @@ int main() {
                     clr_bands
                 );
                 log_info( "[TCS] Clr Freq @ Beam #%d done...", cur_beam);
+
+                process_avg_ant_pwr(
+                    &(sample_storage[cur_radar * STORAGE_NUM * beam_total * ANTENNA_NUM * samples_num]),
+                    samples_num,
+                    beam_total,
+                    &meta_data,
+                    &avg_ant_pwr
+                );
+                log_trace( "[TCS] Avg Antenna Power done...");
             }
             
             // // Flag intersecting freq bands from Radar Table
@@ -1517,6 +1554,12 @@ int main() {
             log_info( "[TCS] Radar[%d] Storage [%d/%d]", cur_radar, tcs_storage_i[cur_radar] + 1, STORAGE_NUM);
             if (is_tcs_ready[cur_radar] == true) {
                 log_info( "     [TCS] Radar[%d] ready...", cur_radar);
+
+                // Display Average Antenna Power
+                log_debug( "[TCS] Average Antenna Power:");
+                for (int ant = 0; ant < ANTENNA_NUM; ant++) {
+                    log_debug( "    Antenna[%d]: %d", ant, avg_ant_pwr[ant]);
+                }
             }
 
             // Display Radar Table Information

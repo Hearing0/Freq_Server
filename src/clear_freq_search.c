@@ -27,7 +27,7 @@
 
 
 // Config and Debug Flags
-#define BIN_OR_CSV_LOG  0   // 0 for Bin, otherwise CSV
+#define BIN_OR_CSV_LOG  1   // 0 for Bin, otherwise CSV
 
 #define TEST_SAMPLES 0
 #define TEST_CLR_RANGE 1
@@ -699,9 +699,6 @@ void process_all_beamformed_spectras(
     ) {
     log_debug("Entered process_all_beamformed_spectras()...");
 
-    // Constants
-    const char *config_path = "../SuperDARN_UHD_Server/array_config.ini";              //"../Freq_Server/utils/clear_freq_input/array_config.ini";
-
     // Initial Data Variables
     int beam_total = config.array_info.nbeams;
     double beam_sep = config.array_info.beam_sep;
@@ -1045,3 +1042,69 @@ clear_freq clear_freq_search(
     t2 = clock();
     log_info("clear_freq_search (s): %lf", ((double) (t2 - t1)) / (CLOCKS_PER_SEC));
 };
+
+process_avg_ant_pwr (
+    fftw_complex *raw_samples, 
+    int num_samples, 
+    int beam_num,
+    sample_meta_data *meta_data,
+    int *avg_pwrs
+) {
+
+
+    // Spectral Averaging 
+    // (0, 1, 2, 3 -> avg[0]), ..., (n-4, n-3, n-2, n-1 -> avg[n/4])
+    // Process n/(4 * 20) averaged elements ...
+    int s_idx = 0;
+    for (int ant_idx = 0; ant_idx < meta_data->num_antennas; ant_idx++) {
+        avg_pwrs[ant_idx] = 0;
+        
+        for (int cur_beam = 0; cur_beam < beam_num; cur_beam++) {
+            for (int cur_sample = 0; cur_sample < num_samples; cur_sample++) {
+                // Calculate Power of each sample ... 
+                // Index using the following array format: [cur_beam][cur_ant][cur_sample]
+                s_idx = cur_beam * meta_data->num_antennas * num_samples + cur_beam * num_samples + cur_sample;
+
+                double re = creal(raw_samples[s_idx]) * creal(raw_samples[s_idx]);
+                double im = cimag(raw_samples[s_idx]) * cimag(raw_samples[s_idx]);
+                
+                avg_pwrs[ant_idx] += sqrt(re + im);
+                    
+            }
+        }
+        // Div by the total elements summed (default: avg ratio of 4 * 20 3-sec spectras)
+        avg_pwrs[ant_idx] /= (beam_num * num_samples);
+        log_trace("         avg_ant_pwr[%d]: %d", ant_idx, avg_pwrs[ant_idx]);
+    }
+
+};
+
+// // Spectral Averaging 
+//     // (0, 1, 2, 3 -> avg[0]), ..., (n-4, n-3, n-2, n-1 -> avg[n/4])
+//     // Process n/(4 * 20) averaged elements ...
+//     int s_idx = 0;
+//     for (int k = 0; k < num_avg_samples; k++) {
+//         avg_beam_spectra[cur_beam][k] = 0;
+
+//         // Across each descrete spectra stored by ... 
+//         for (int cur_spectra = 0; cur_spectra < spectra_num; cur_spectra++) {
+//             // Sum the magnitude of four spectrum samples in a row 
+//             for (int j = 0; j < avg_ratio; j++) {
+//                 // Index using the following array format: [cur_spectra][cur_beam][k * avg_ratio + j]
+//                 s_idx = cur_spectra * beam_num * num_samples + cur_beam * num_samples + k * avg_ratio + j;
+
+//                 double re = creal(beamformed_spectra[s_idx]) * creal(beamformed_spectra[s_idx]);
+//                 double im = cimag(beamformed_spectra[s_idx]) * cimag(beamformed_spectra[s_idx]);
+                
+//                 avg_beam_spectra[cur_beam][k] += sqrt(re + im);
+
+//                 // if (k == 9) {
+//                 //     log_trace("    spectra[%d]: %f + j%f", s_idx, creal(beamformed_spectra[s_idx]), cimag(beamformed_spectra[s_idx]));
+//                 // }
+//             }   
+//         }
+
+//         // Div by the total elements summed (default: avg ratio of 4 * 20 3-sec spectras)
+//         avg_beam_spectra[cur_beam][k] /= (avg_ratio * spectra_num);
+//         if (k == 5) log_trace("         avg_spectra[%d][%d]: %f", cur_beam, k, avg_beam_spectra[cur_beam][k]);
+//     }
