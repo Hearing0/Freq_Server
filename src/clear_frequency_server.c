@@ -22,7 +22,7 @@
 
 
 // Logging Vars
-#define LOG_TERMINAL_LEVEL 0                         // 0 = TRACE, 1 = DEBUG, 2 = INFO, 3 = WARN, 4 = ERROR, 5 = FATAL  
+#define LOG_TERMINAL_LEVEL 1                         // 0 = TRACE, 1 = DEBUG, 2 = INFO, 3 = WARN, 4 = ERROR, 5 = FATAL  
 #define LOG_FILE_LEVEL 1
 #define LOG_PREFIX "[CFS] %s"               // *Unused* Prefix for log messages
 #define LOG_FILEPATH "log/cfs/cfs.%s.log"
@@ -174,7 +174,6 @@ void **temp_ptrs;
 
 fftw_complex *temp_samples = NULL;
 fftw_complex *spectra_storage = NULL;
-fftw_complex *sample_storage = NULL;
 
 double **avg_beam_spectrum = NULL;
 int avg_beam_spectrum_sizes[] = {
@@ -500,8 +499,6 @@ void cleanup() {
     log_debug( "Cleaned temp_samples ...");
     fftw_free(spectra_storage);
     log_debug( "Cleaned spectra_storage ...");
-    fftw_free(sample_storage);
-    log_debug( "Cleaned sample_storage ...");
     // cleanup_storage_fft();
     // log_debug( "Cleaned fftw plan ...");
     
@@ -683,16 +680,6 @@ void realloc_storage(int samples_num, int total_beams, int radar_num, int avg_ra
         exit(EXIT_FAILURE);
     }
     log_trace( "Allocated new spectra_storage memory...");
-
-    // Realloc sample_storage
-    fftw_free(sample_storage);
-    sample_storage = fftw_alloc_complex(radar_num * STORAGE_NUM * total_beams * ANTENNA_NUM * samples_num);
-    if (sample_storage == NULL) {
-        log_fatal("Error allocating memory for sample_storage");
-        perror("Error allocating memory for sample_storage");
-        exit(EXIT_FAILURE);
-    }
-    log_trace( "Allocated new sample_storage memory...");
     
     // Realloc avg_beam_spectrum
     free_nested_ptr(avg_beam_spectrum, 2, avg_beam_spectrum_sizes);
@@ -976,14 +963,6 @@ int main() {
         exit(EXIT_FAILURE);
     }
 
-    sample_storage = fftw_alloc_complex(radar_num * STORAGE_NUM * beam_total * ANTENNA_NUM * SAMPLES_NUM);
-    if (sample_storage == NULL) {
-        log_fatal("Error allocating memory for sample_storage");
-        perror("Error allocating memory for sample_storage");
-        exit(EXIT_FAILURE);
-    }
-
-
     // Get Clear Frequency Resolution 
     log_debug( "Reading Avg_ratio from radar_config_constants.py ...");
     int avg_ratio = 0;
@@ -1089,7 +1068,9 @@ int main() {
         beam_total,
         0
     };
-    int avg_ant_pwr[ANTENNA_NUM] = {0};
+    int avg_ant_pwr_num = 0;                                    // num of times avg_ant_pwr is calculated 
+    int accu_avg_ant_pwr[STATIC_RADAR_NUM][ANTENNA_NUM] = {0};  // integrated avg antenna power from sample sets for an accurate avg ant power
+    int ant_missing_ct[STATIC_RADAR_NUM][ANTENNA_NUM] = {0};    // num of times antenna is missing
     int clr_storage_i[STATIC_RADAR_NUM] = {0};
     int tcs_storage_i[STATIC_RADAR_NUM] = {0};
     bool is_tcs_ready[STATIC_RADAR_NUM] = {false};
@@ -1200,6 +1181,14 @@ int main() {
                     
                     realloc_storage(samples_num, beam_total, radar_num, avg_ratio);
 
+                    // Reset Avg Antenna Power and Missing Antenna Trackers
+                    avg_ant_pwr_num = 0;
+                    for (int r_idx = 0; r_idx < radar_num; r_idx++) {
+                        for(int ant_idx = 0; ant_idx < ANTENNA_NUM; ant_idx++) {
+                            accu_avg_ant_pwr[r_idx][ant_idx] = 0;
+                            ant_missing_ct[r_idx][ant_idx] = 0;
+                        }
+                    }
                     // log_info( "Reinitializing TCS FFTW plan...");
                     // cleanup_storage_fft();
                     // init_storage_fft(samples_num, beam_total);
@@ -1315,13 +1304,6 @@ int main() {
                     }
                     log_info( "Default clr_range set to %d -- %d", clr_range[0][0], clr_range[0][1]);
                 }
-
-                size_t s_storage_idx = (cur_radar * STORAGE_NUM + tcs_storage_i[cur_radar]) * ANTENNA_NUM * samples_num;
-                memcpy(
-                    &(sample_storage[s_storage_idx]),
-                    temp_samples,
-                    ANTENNA_NUM * samples_num * sizeof(fftw_complex)
-                );
                 
                 // Fill Spectra Storage
                 process_all_beamformed_spectras(
@@ -1491,20 +1473,19 @@ int main() {
                     clr_bands
                 );
                 log_info( "[TCS] Clr Freq @ Beam #%d done...", cur_beam);
-
-                process_avg_ant_pwr(
-                    &(sample_storage[cur_radar * STORAGE_NUM * beam_total * ANTENNA_NUM * samples_num]),
-                    samples_num,
-                    beam_total,
-                    &meta_data,
-                    &avg_ant_pwr
-                );
-                log_trace( "[TCS] Avg Antenna Power done...");
             }
-            
-            // // Flag intersecting freq bands from Radar Table
-            // flag_reserved_freqs(cur_radar, cur_channel, radar_num, clr_bands, clr_range[cur_radar]);
 
+            // Process Average Antenna Power
+            log_info( "[TCS] Processing Average Antenna Power...");
+            process_avg_ant_pwr(
+                temp_samples,
+                samples_num,
+                &meta_data,
+                ant_missing_ct[cur_radar],
+                accu_avg_ant_pwr[cur_radar]
+            );
+            avg_ant_pwr_num++;
+            
             // Output Clear Freq Bands
             bool is_clr_band_found = false;
             for (int i = 0; i < CLR_BANDS_MAX; i++) {
@@ -1552,15 +1533,18 @@ int main() {
             
             // Display TCS Storage Information
             log_info( "[TCS] Radar[%d] Storage [%d/%d]", cur_radar, tcs_storage_i[cur_radar] + 1, STORAGE_NUM);
-            if (is_tcs_ready[cur_radar] == true) {
-                log_info( "     [TCS] Radar[%d] ready...", cur_radar);
 
-                // Display Average Antenna Power
-                log_debug( "[TCS] Average Antenna Power:");
-                for (int ant = 0; ant < ANTENNA_NUM; ant++) {
-                    log_debug( "    Antenna[%d]: %d", ant, avg_ant_pwr[ant]);
-                }
+            // Display Average Antenna Power   
+            log_debug( "[TCS] Average Antenna Power:");
+            for (int ant_idx = 0; ant_idx < ANTENNA_NUM; ant_idx++) {
+                log_info( "->  PWR[radar#%d][ant#%d]: %d", 
+                    cur_radar, 
+                    ant_idx,
+                    accu_avg_ant_pwr[cur_radar][ant_idx] /  (avg_ant_pwr_num - ant_missing_ct[cur_radar][ant_idx])
+                    // ant_missing_ct[cur_radar][ant_idx]
+                );
             }
+        
 
             // Display Radar Table Information
             log_debug( "Radar Table Information:");
@@ -1601,4 +1585,4 @@ int main() {
         log_info( "Processed Client successfully...");
         log_info( "Processing Time for Client (s): %lf\n", ((double) (t2 - t1)) / (CLOCKS_PER_SEC));
     }
-}
+};
