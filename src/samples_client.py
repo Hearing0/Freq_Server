@@ -945,8 +945,8 @@ def flatten_raw_into_int_bytes(arr):
 
 clear_freq_range = [int(12 * pow(10,6)), int(12.4 * pow(10,6))]
 
-i = 19
-while (i < 20):
+i = 0
+while (i < 10):
    
     for r_idx in range(0, 2):
         for c_idx in range(0, 5):

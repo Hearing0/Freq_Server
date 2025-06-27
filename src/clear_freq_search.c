@@ -17,6 +17,8 @@
 #define MIN_FREQ_SEP 6000          // Minimum Frequency Separation (in Hz) between Clear Freq Bands (If guard band + transmission bandwidth is less than this, 
                                     // then minimum frequency separation is used instead)
 
+#define MIN_ANT_PWR 200            // Minimum Antenna Power to consider antenna as not missing
+
 #define IDX_LAST_IA 19              // Last Interferrometer Array
 #define IDX_LAST_MA 15              // Last Main Array
 #define PI 3.14159265358979323846
@@ -27,7 +29,7 @@
 
 
 // Config and Debug Flags
-#define BIN_OR_CSV_LOG  0   // 0 for Bin, otherwise CSV
+#define BIN_OR_CSV_LOG  1   // 0 for Bin, otherwise CSV
 
 #define TEST_SAMPLES 0
 #define TEST_CLR_RANGE 1
@@ -699,9 +701,6 @@ void process_all_beamformed_spectras(
     ) {
     log_debug("Entered process_all_beamformed_spectras()...");
 
-    // Constants
-    const char *config_path = "../SuperDARN_UHD_Server/array_config.ini";              //"../Freq_Server/utils/clear_freq_input/array_config.ini";
-
     // Initial Data Variables
     int beam_total = config.array_info.nbeams;
     double beam_sep = config.array_info.beam_sep;
@@ -879,16 +878,18 @@ void process_avg_beam_spectra(
     // Save data to csv
     if (access(SPECTRAL_LOG_FILE, F_OK) == 0) {        
         char* avg_spectra_filename[128] = {0};
-        snprintf(avg_spectra_filename, sizeof(avg_spectra_filename), "%s.avg", SPECTRUM_FILE);
-
+        sprintf(avg_spectra_filename, SPECTRUM_FILE, "%s", "avg.%s");
+        log_trace("avg_spectra_filename: %s\n", avg_spectra_filename);
+        
+        log_warn("Logging for TCS has some bugs being worked out and has been disabled in the meantime.");
         // Write logs if its folder accessable
-        if (BIN_OR_CSV_LOG == 0) {
-            write_spectrum_mag_bin(avg_spectra_filename, avg_beam_spectra, avg_freq_vector, num_avg_samples);
-        } else {
+        // if (BIN_OR_CSV_LOG == 0) {
+            // write_spectrum_mag_bin(avg_spectra_filename, avg_beam_spectra, avg_freq_vector, num_avg_samples);
+        // } else {
             // write_sample_mag_csv(sample_im_file, sample_im, freq_vector, meta_data);                                                     // Used to check complex Samples after Beamforming; ...
             // write_sample_mag_csv(sample_re_file, sample_re, freq_vector, meta_data);                                                     // Plot w/ sample_plot.py
-            write_spectrum_mag_csv(avg_spectra_filename, avg_beam_spectra, avg_freq_vector, num_avg_samples);  // Spectrum after Spectrum FFT averaging; plot w/ spectrum_plot.py
-        }
+            // write_spectrum_mag_csv(avg_spectra_filename, avg_beam_spectra, avg_freq_vector, num_avg_samples);  // Spectrum after Spectrum FFT averaging; plot w/ spectrum_plot.py
+        // }
         log_trace("[CFS] \'save_spectra\' found; Logged individual FFT Spectrum and Clear Frequency batches.");
     } else log_trace("[CFS] \'save_spectra\' not found. Not logging spectra nor clr_frequency.");
 }
@@ -961,15 +962,17 @@ void process_beam_clr_freq(
 
     // Save data to csv
     if (access(SPECTRAL_LOG_FILE, F_OK) == 0) {        
-        char* avg_clr_freq_filename = {0};
-        sprintf(avg_clr_freq_filename, "%s.avg", CLR_FREQ_FILE); 
+        char* avg_clr_freq_filename[256] = {0};
+        sprintf(avg_clr_freq_filename, CLR_FREQ_FILE, "%s", "avg.%s"); 
+        log_warn("Logging for TCS has some bugs being worked out and has been disabled in the meantime.");
+
         // Write logs if its folder accessable
-        if (BIN_OR_CSV_LOG == 0) {
-            write_clr_freq_bin(avg_clr_freq_filename, clr_bands);                                           // Used to plot Clear Freq Bands w/ spectrum_plot.clr_freq.py
-        } else {
-            write_clr_freq_csv(avg_clr_freq_filename, clr_bands);
-        }
-        log_trace("[CFS] \'save_spectra\' found; Logged individual FFT Spectrum and Clear Frequency batches.");
+        // if (BIN_OR_CSV_LOG == 0) {
+        //     write_clr_freq_bin(avg_clr_freq_filename, clr_bands);                                           // Used to plot Clear Freq Bands w/ spectrum_plot.clr_freq.py
+        // } else {
+        //     write_clr_freq_csv(avg_clr_freq_filename, clr_bands);
+        // }
+        // log_trace("[CFS] \'save_spectra\' found; Logged individual FFT Spectrum and Clear Frequency batches.");
     } else log_trace("[CFS] \'save_spectra\' not found. Not logging spectra nor clr_frequency.");
 }
 
@@ -1044,4 +1047,49 @@ clear_freq clear_freq_search(
     // Print processing time; Stopwatch End
     t2 = clock();
     log_info("clear_freq_search (s): %lf", ((double) (t2 - t1)) / (CLOCKS_PER_SEC));
+};
+
+void process_avg_ant_pwr (
+    fftw_complex *raw_samples, 
+    int num_samples, 
+    sample_meta_data *meta_data,
+    int *ant_missing_count,
+    int *acculated_pwrs
+) {
+    double avg_pwrs[meta_data->num_antennas];
+
+    log_trace("Entered process_avg_ant_pwr()...");
+    // Average antenna powers from all samples
+    int s_idx = 0;
+    for (int ant_idx = 0; ant_idx < meta_data->num_antennas; ant_idx++) {     
+        avg_pwrs[ant_idx] = 0;
+
+        for (int cur_sample = 0; cur_sample < num_samples; cur_sample++) {
+            // if (cur_sample % 250 == 0) log_trace("ant_idx: %d  cur_sample: %d", ant_idx, cur_sample);
+
+            // Calculate Power of each sample ... 
+            // Index using the following array format: [cur_ant][cur_sample]
+            s_idx = ant_idx * num_samples + cur_sample;
+
+            double re = creal(raw_samples[s_idx]) * creal(raw_samples[s_idx]);
+            double im = cimag(raw_samples[s_idx]) * cimag(raw_samples[s_idx]);
+            
+            avg_pwrs[ant_idx] += re + im; // sqrt(re + im);
+            // log_trace("    spectra[%d]: %f + j%f", s_idx, creal(raw_samples[s_idx]), cimag(raw_samples[s_idx]));
+            // log_trace("         avg_ant_pwr[%d]: %f", ant_idx, avg_pwrs[ant_idx]);
+        }
+        // Div by the total elements summed
+        avg_pwrs[ant_idx] /= num_samples;
+        // log_trace("         avg_ant_pwr[%d]: %f", ant_idx, avg_pwrs[ant_idx]);
+
+        // if (avg_pwrs[ant_idx] < MIN_ANT_PWR) {
+        //     ant_missing_count[meta_data->antenna_list[ant_idx]]++;
+        //     log_warn("Antenna %d is abnormal! (pwr: %f)", meta_data->antenna_list[ant_idx], avg_pwrs[ant_idx]);
+        // }
+
+        // Accumulate the average powers into the time average powers
+        acculated_pwrs[meta_data->antenna_list[ant_idx]] += avg_pwrs[ant_idx];
+        log_trace("         avg_ant_pwr[%d]: %d", ant_idx, acculated_pwrs[ant_idx]);
+    }
+
 };
