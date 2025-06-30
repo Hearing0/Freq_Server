@@ -339,9 +339,9 @@ void find_clear_freqs(double *spectrum, sample_meta_data meta_data, double avg_d
     for (int i = 0; i < CLR_BANDS_MAX; i++) {
         clr_bands[i].f_start = clr_search_sample_start * avg_delta_f - (meta_data.usrp_rf_rate / 2) + meta_data.usrp_fcenter * 1000;
         clr_bands[i].f_end = clr_search_sample_end * avg_delta_f - (meta_data.usrp_rf_rate / 2) + meta_data.usrp_fcenter * 1000;
-        clr_bands[i].noise = RAND_MAX; // XXX: Logic Flip
+        clr_bands[i].noise = RAND_MAX;
     };
-    int min_idx[CLR_BANDS_MAX];
+    int min_idx[CLR_BANDS_MAX]; // array of clr_bands' index in the convolve_bw 
     
     // Identify lowest noise bands from convolve results...
     freq_band curr_band;
@@ -357,7 +357,7 @@ void find_clear_freqs(double *spectrum, sample_meta_data meta_data, double avg_d
         // Compare curr power with min_powers...
         for (int j = CLR_BANDS_MAX - 1; j >= 0 ; j--) {
             // Update Insert Index; maintaining ascending order 
-            if (curr_band.noise < clr_bands[j].noise && curr_band.noise > 0 && curr_band.noise < CLR_NOISE_THRESHOLD && curr_band.noise < RAND_MAX) { // XXX: Logic Flip
+            if (curr_band.noise < clr_bands[j].noise && curr_band.noise > 0 && curr_band.noise < CLR_NOISE_THRESHOLD && curr_band.noise < RAND_MAX) {
                 insert_idx = j;
             }
             // Check for Intersecting Band; get intersecting clr_band index
@@ -376,7 +376,7 @@ void find_clear_freqs(double *spectrum, sample_meta_data meta_data, double avg_d
         if (insert_idx != -1) {
             // Intersection w/ curr_band was also Found...
             if (intersect_idx != -1) {
-                // Special: If Intersect has worse noise, do not place/skip
+                // Special: If new band has worse noise, do not place/skip
                 if (insert_idx > intersect_idx) continue;
                 
                 // log_trace("    Intersecting Insertion found w/...");
@@ -384,7 +384,7 @@ void find_clear_freqs(double *spectrum, sample_meta_data meta_data, double avg_d
 
                 // log_trace("        i-band = | %d -- %f -- %d|", inter_band.f_start, inter_band.noise, inter_band.f_end);
 
-                // Special: Shift right till the Intersecting band is overwritten 
+                // Special: Shift inter_band band right till overwritten 
                 if (insert_idx < intersect_idx) {
                     // Debug: verify bands shift properly @ sample
                     // if (i == 10) for (int j = 0; j < CLR_BANDS_MAX; j++) {

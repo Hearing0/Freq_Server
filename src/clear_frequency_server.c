@@ -1421,6 +1421,15 @@ int main() {
                 }
             }
             
+            // Unmask old current channel's reserved frequency
+            log_debug("Unmasking old reserved clr band[%d]: | %dHz -- %dHz |", i, clr_bands[i].f_start, clr_bands[i].f_end);
+            restricted_freq[restricted_num + cur_radar * STATIC_CHANNEL_NUM + cur_channel].f_end = 0;
+            restricted_freq[restricted_num + cur_radar * STATIC_CHANNEL_NUM + cur_channel].f_start = 0;
+            restricted_freq[restricted_num + cur_radar * STATIC_CHANNEL_NUM + cur_channel].noise = 0;
+            radar_table[cur_radar][cur_channel].clr_band.f_start = 0;
+            radar_table[cur_radar][cur_channel].clr_band.noise = 0;
+            radar_table[cur_radar][cur_channel].clr_band.f_end = 0;
+
             log_info( "    avg_ratio: %d", avg_ratio);
             log_info( "    delta_f: %d", (int) (meta_data.usrp_rf_rate / samples_num) );
 
@@ -1514,7 +1523,7 @@ int main() {
                 // Flag abnormal clr_bands in log
                 if (clr_bands[i].f_start == 0 || clr_bands[i].f_end == 0 || clr_bands[i].noise == 0 ||
                     clr_bands[i].f_start == RAND_MAX || clr_bands[i].f_end == RAND_MAX || clr_bands[i].noise == RAND_MAX) {
-                    log_error("WARN: Clear Freq Band[%d] is abnornal", i);
+                    log_error("ERROR: Clear Freq Band[%d] is abnornal", i);
                     log_error("Clear Freq Band[%d]: | %dHz -- Noise: %f -- %dHz |", i, clr_bands[i].f_start, clr_bands[i].noise, clr_bands[i].f_end);
                     log_error("ERROR: There COULD be an error in CFS order of operations, or too wide of a guardband/narrow clear search range!");
                 }
@@ -1532,11 +1541,13 @@ int main() {
             
             // Display TCS Storage Information
             log_info( "[TCS] Radar[%d] Storage [%d/%d]", cur_radar, tcs_storage_i[cur_radar] + 1, STORAGE_NUM);
+            if (is_tcs_ready[cur_radar] == true) log_info( "[TCS] Radar[%d] is Ready...", cur_radar);
+            else log_info( "[TCS] Radar[%d] is NOT Ready...", cur_radar);
 
             // Display Average Antenna Power   
             log_debug( "[TCS] Average Antenna Power:");
             for (int ant_idx = 0; ant_idx < STATIC_ANTENNA_NUM; ant_idx++) {
-                log_info( "->  PWR[radar#%d][ant#%d]: %d", 
+                log_debug( "->  PWR[radar#%d][ant#%d]: %d", 
                     cur_radar, 
                     ant_idx,
                     accu_avg_ant_pwr[cur_radar][ant_idx] /  (avg_ant_pwr_num - ant_missing_ct[cur_radar][ant_idx])
