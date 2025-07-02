@@ -6,6 +6,7 @@ import timeit
 import posix_ipc
 import pickle       # To read in pickle test samples
 import numpy as np
+import copy
 
 
 
@@ -442,9 +443,21 @@ class ClearFrequencyService():
                 obj['shm_ptr'].write(struct.pack(dtype * 1, flattened_data))
         
         
-        # If element size is incorrect, Display error
         except AttributeError as e:
-            print("[Frequency Client] ERROR: Element Size is incorrect. send()'s parameters were likely not assigned properly. Please verify...")
+            print("[Frequency Client] ERROR: Element Size is incorrect. send_samples()'s parameters were likely not assigned properly. Please verify...")
+            print(f"AttributeError: {e}")
+            print(f"Object: {obj}, Attributes: {dir(obj)}")
+            raise
+        
+        except ValueError as e:
+            print("[Frequency Client] ERROR: Antenna list mismatch with sample set. send_samples()'s parameters were likely not assigned properly. Please verify...")
+            
+            # Print data difference between the sample set and expected size
+            print("sample bytes:", len(interleaved_data.tobytes()))
+            obj['shm_ptr'].seek(0, 2)  # Seek to end
+            print("expected size:", obj['shm_ptr'].tell())
+            obj['shm_ptr'].seek(0)
+        
             print(f"AttributeError: {e}")
             print(f"Object: {obj}, Attributes: {dir(obj)}")
             raise
@@ -536,7 +549,7 @@ class ClearFrequencyService():
                 obj['shm_ptr'] = mmap.mmap(obj['shm_fd'], obj['size'], mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE) 
     
     
-    def send_samples(self, raw_samples, radar_id, channel_id, fcenter=None, meta_data=None):
+    def send_samples(self, raw_samples, radar_id, fcenter=None, meta_data=None):
         """ Waits for client requests, then processes server data, writes client 
             data, and requests server to process new data. When process is 
             terminated, the try/finally block cleans up.
@@ -587,9 +600,9 @@ class ClearFrequencyService():
                 print(f"[Frequency Client] Data Write: {self.shm_objects[10]['name']}")
                 self.write_data(self.shm_objects[10], radar_id)
                 
-                # Read Channel ID
-                print(f"[Frequency Client] Data Write: {self.shm_objects[11]['name']}")
-                self.write_data(self.shm_objects[11], channel_id)
+                # # Read Channel ID
+                # print(f"[Frequency Client] Data Write: {self.shm_objects[11]['name']}")
+                # self.write_data(self.shm_objects[11], channel_id)
 
                 # If meta_data has changed
                 if self.old_meta_data != meta_data_list:
@@ -893,22 +906,48 @@ raw_samples, meta_data = read_sample_pickle("/home/df/Desktop/PSU-SuperDARN/Freq
 clear_freq_range = [ int(12 * pow(10,6)), int(12.5 * pow(10,6)) ]
 # restrict_data=read_restrict_file(RESTRICT_FILE)
 
-# Test: only first two antennas and 2000 samples
+
+
+# Test: only first two antennas
 meta_ant_full = meta_data['antenna_list']
 meta_ant_partial = [0,2] 
 trimmed_samples = []
-# for i in meta_ant_partial:
-#     trimmed_samples.append(raw_samples[i][:2000])
-trimmed_samples = raw_samples[:2]
- 
-# trimmed_samples = raw_samples[:2][:2000]
+trimmed_samples = raw_samples[0:1]
 
+# Check the sample data type in raw_samples
+print(f"raw_samples type: {type(raw_samples[0][0])}")
+print(f"trimmed_samples shape: {len(trimmed_samples)} x {len(trimmed_samples[0])} x {2} (antenna_num x sample_num x complex)")
+
+
+# Test: empty main array samples, but still inferrometer array samples
+blank_main_meta = copy.deepcopy(meta_data)
+blank_main_samples = []
+blank_main_samples = np.zeros((14, 2500), dtype=np.complex128)  # 20 antennas, 2500 samples, complex
+print(f"blank_samples: {type(blank_main_samples[0][0])}")
+
+for i in range( len(meta_data['antenna_list']) - 4, len(meta_data['antenna_list']) ):                 # Copy inferrometer samples to last 4 antennas in blank array
+    ant_idx = meta_data['antenna_list'][i]
+    blank_main_samples[i] = raw_samples[i] 
+print(f"blank_main_samples shape: {len(blank_main_samples)} x {len(blank_main_samples[0])} x {2} (antenna_num x sample_num x complex)")
+
+
+# Test: Only last antenna and 2000 samples
+only_last_inferrometer_meta = copy.deepcopy(meta_data)
+only_last_inferrometer_meta['antenna_list'] = [19]  # Only last antenna
+only_last_inferrometer_samples = raw_samples[len(raw_samples)-2]
+print(f"only_last_inferrometer_samples shape: {len(only_last_inferrometer_samples)} x {2} (antenna_num x sample_num x complex)")
+print(f"meta list debug: {only_last_inferrometer_meta}")
+
+# Test: 1/100 magnitude samples in main array
+weak_meta = copy.deepcopy(meta_data)
+weak_samples = [sample / 100 for sample in raw_samples]
+
+ 
 # print(f"samples: {raw_samples[:2][:10]}")
 
 # print(f"raw_samples size: {len(raw_samples) * len(raw_samples[0])}")
 # print(f"raw_samples shape: {len(raw_samples)} x {len(raw_samples[0])} x {2} (antenna_num x sample_num x complex)")
 # print(f"trimmed_s size: {len(trimmed_samples) * len(trimmed_samples[0])}")
-print(f"trimmed_samples shape: {len(trimmed_samples)} x {len(trimmed_samples[0])} x {2} (antenna_num x sample_num x complex)")
 
 # CFS.flag_debug(trimmed_samples, 
 #                 clr_range=clear_freq_range, 
@@ -943,13 +982,13 @@ def flatten_raw_into_int_bytes(arr):
 # Test flatten speed
 # timeit.timeit()
 
-clear_freq_range = [int(12 * pow(10,6)), int(12.4 * pow(10,6))]
+clear_freq_range = [int(12 * pow(10,6)), int(12.22 * pow(10,6))]
 
 i = 0
-while (i < 10):
+while (i < 5):
    
-    for r_idx in range(0, 2):
-        for c_idx in range(0, 5):
+    for r_idx in range(0, 1):
+        for c_idx in range(0, 1):
             
             meta_data['antenna_list'] = meta_ant_full
             meta_data['number_of_samples'] = 2500
@@ -960,14 +999,68 @@ while (i < 10):
                 fcenter=12000,
                 meta_data=meta_data
             )
+            
+            if (meta_data == only_last_inferrometer_meta): print("meta and only last inferro meta are identical")
+            
+            # Test Cases
+            # 1. Only last antenna and 2000 samples
+            CFS.send_samples(
+                trimmed_samples, 
+                radar_id=r_idx,
+                channel_id=c_idx,
+                fcenter=12000,
+                meta_data=only_last_inferrometer_meta
+            )            
+            CFS.request_clr_freq(
+                radar_id=r_idx,
+                channel_id=c_idx,
+                beam_num=0,
+                clr_range=clear_freq_range,
+                sample_sep=340,
+            )
+            print("Only last inferro test complete")
+            
+            # 2. Blank main array samples, but still inferrometer array samples
+            CFS.send_samples(
+                blank_main_samples, 
+                radar_id=r_idx,
+                channel_id=c_idx,
+                fcenter=12000,
+                meta_data=blank_main_meta
+            )
+            CFS.request_clr_freq(
+                radar_id=r_idx,
+                channel_id=c_idx,
+                beam_num=0,
+                clr_range=clear_freq_range,
+                sample_sep=340,
+            )
+            print("blank test complete")
+            
+            # 3. Weak samples, all antennas
+            CFS.send_samples(
+                weak_samples,
+                radar_id=r_idx,
+                channel_id=c_idx,
+                fcenter=12000,
+                meta_data=weak_meta
+            )
+            CFS.request_clr_freq(
+                radar_id=r_idx,
+                channel_id=c_idx,
+                beam_num=0,
+                clr_range=clear_freq_range,
+                sample_sep=340,
+            )
+            print("weak test complete")
 
-            for beam_idx in range(0, 15, 2):
-                CFS.request_clr_freq(
-                    radar_id=r_idx,
-                    channel_id=c_idx,
-                    beam_num=beam_idx,
-                    clr_range=clear_freq_range, 
-                    sample_sep=340,     # only necesary on first request or if changing
-                )
+            # for beam_idx in range(0, 15, 3):
+            #     CFS.request_clr_freq(
+            #         radar_id=r_idx,
+            #         channel_id=c_idx,
+            #         beam_num=beam_idx,
+            #         clr_range=clear_freq_range, 
+            #         sample_sep=340,     # only necesary on first request or if changing
+                # )
             
     i += 1
