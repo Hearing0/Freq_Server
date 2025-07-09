@@ -22,10 +22,10 @@
 
 
 // Logging Vars
-#define LOG_TERMINAL_LEVEL 1                         // 0 = TRACE, 1 = DEBUG, 2 = INFO, 3 = WARN, 4 = ERROR, 5 = FATAL  
-#define LOG_FILE_LEVEL 1
-#define LOG_PREFIX "[CFS] %s"               // *Unused* Prefix for log messages
-#define LOG_FILEPATH "log/cfs/cfs.%s.log"
+#define LOG_TERMINAL_LEVEL  0                        // 0 = TRACE, 1 = DEBUG, 2 = INFO, 3 = WARN, 4 = ERROR, 5 = FATAL  
+#define LOG_FILE_LEVEL      0
+#define LOG_PREFIX          "[CFS] %s"               // *Unused* Prefix for log messages
+#define LOG_FILEPATH        "log/cfs/cfs.%s.log"
 
 // Server Config Vars
 #define AVG_RATIO 4                                 // Number of samples to average during spectral averaging (4 = 4 samples avg-ed per beam)
@@ -1457,19 +1457,9 @@ int main() {
                     tcs_storage_i[cur_radar] = 0;
                 }
 
-                // Special: Restrict Clr Range to Usrp Range
-                if (clr_range[cur_radar][0] < (meta_data.usrp_fcenter * 1000 - (0.5 * meta_data.usrp_rf_rate))) {
-                    // Restrict lower bound to lower bound of Usrp Range
-                    clr_range[cur_radar][0] = (meta_data.usrp_fcenter * 1000 - (0.5 * meta_data.usrp_rf_rate));
-                }
-                if (clr_range[cur_radar][1] > (meta_data.usrp_fcenter * 1000 + (0.5 * meta_data.usrp_rf_rate))) {
-                    // Restrict upper bound to upper bound of Usrp Range
-                    clr_range[cur_radar][1] = (meta_data.usrp_fcenter * 1000 + (0.5 * meta_data.usrp_rf_rate));
-                }
-
                 // Fail: Clr Range exceeds Usrp Range and has no intersection
-                if (clr_range[cur_radar][1] < (meta_data.usrp_fcenter * 1000 - (0.5 * meta_data.usrp_rf_rate)) ||
-                    clr_range[cur_radar][0] > (meta_data.usrp_fcenter * 1000 + (0.5 * meta_data.usrp_rf_rate))) 
+                if (clr_range[cur_radar][1] < (meta_data.usrp_fcenter * 1000 - (meta_data.usrp_rf_rate / 2)) ||
+                    clr_range[cur_radar][0] > (meta_data.usrp_fcenter * 1000 + (meta_data.usrp_rf_rate / 2))) 
                 {
                     log_error("ERROR: Clear Range is out of Usrp Range!");
                     log_error("ERROR: Please check your Clear Range and Usrp RF Rate settings.");
@@ -1483,6 +1473,16 @@ int main() {
 
                     // Prevent further CFS from processing search
                     fl_clr_range_out_bounds = true;
+                }
+
+                // Special: Restrict Clr Range to Usrp Range
+                if (clr_range[cur_radar][0] < (meta_data.usrp_fcenter * 1000 - (meta_data.usrp_rf_rate / 2))) {
+                    // Restrict lower bound to lower bound of Usrp Range
+                    clr_range[cur_radar][0] = (meta_data.usrp_fcenter * 1000 - (meta_data.usrp_rf_rate / 2));
+                }
+                if (clr_range[cur_radar][1] > (meta_data.usrp_fcenter * 1000 + (meta_data.usrp_rf_rate / 2))) {
+                    // Restrict upper bound to upper bound of Usrp Range
+                    clr_range[cur_radar][1] = (meta_data.usrp_fcenter * 1000 + (meta_data.usrp_rf_rate / 2));
                 }
             }
             

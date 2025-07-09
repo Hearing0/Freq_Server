@@ -983,11 +983,12 @@ def flatten_raw_into_int_bytes(arr):
 # timeit.timeit()
 
 clear_freq_range = [int(12 * pow(10,6)), int(12.22 * pow(10,6))]
+tight_clr_range = [int(12.1 * pow(10,6)), int(12.2 * pow(10,6))]
 
 i = 0
 while (i < 5):
    
-    for r_idx in range(0, 1):
+    for r_idx in range(0, 2):
         for c_idx in range(0, 2):
             
             meta_data['number_of_samples'] = 2500
@@ -1002,80 +1003,13 @@ while (i < 5):
                 radar_id=r_idx,
                 channel_id=c_idx,
                 beam_num=0,
-                clr_range=clear_freq_range,
+                clr_range=tight_clr_range,
                 sample_sep=340,
             )
             
             if (meta_data == only_last_inferrometer_meta): print("meta and only last inferro meta are identical")
             
-            # Test Cases
-            # 1. Only last antenna and 2000 samples
-            CFS.send_samples(
-                only_last_inferrometer_samples, 
-                radar_id=r_idx,
-                # channel_id=c_idx,
-                fcenter=12000,
-                meta_data=only_last_inferrometer_meta
-            )            
-            CFS.request_clr_freq(
-                radar_id=r_idx,
-                channel_id=c_idx,
-                beam_num=0,
-                clr_range=clear_freq_range,
-                sample_sep=340,
-            )
-            print("Only last inferro test complete")
-            
-            # 2. Blank main array samples, but still inferrometer array samples
-            CFS.send_samples(
-                blank_main_samples, 
-                radar_id=r_idx,
-                # channel_id=c_idx,
-                fcenter=12000,
-                meta_data=blank_main_meta
-            )
-            CFS.request_clr_freq(
-                radar_id=r_idx,
-                channel_id=c_idx,
-                beam_num=0,
-                clr_range=clear_freq_range,
-                sample_sep=340,
-            )
-            print("blank test complete")
-            
-            # 3. Weak samples, all antennas
-            CFS.send_samples(
-                weak_samples,
-                radar_id=r_idx,
-                # channel_id=c_idx,
-                fcenter=12000,
-                meta_data=weak_meta
-            )
-            CFS.request_clr_freq(
-                radar_id=r_idx,
-                channel_id=c_idx,
-                beam_num=0,
-                clr_range=clear_freq_range,
-                sample_sep=340,
-            )
-            print("weak test complete")
-
-            # 4. Trimmed samples, only first X antennas
-            CFS.send_samples(
-                trimmed_samples, 
-                radar_id=r_idx,
-                # channel_id=c_idx,
-                fcenter=12000,
-                meta_data=meta_data
-            )
-            CFS.request_clr_freq(
-                radar_id=r_idx,
-                channel_id=c_idx,
-                beam_num=0,
-                clr_range=clear_freq_range,
-                sample_sep=340,
-            )
-            print("trimmed test complete")
+           
 
             # for beam_idx in range(0, 15, 3):
             #     CFS.request_clr_freq(
@@ -1087,3 +1021,73 @@ while (i < 5):
                 # )
             
     i += 1
+
+
+ # # Test Cases
+            # # 1. Only last antenna and 2000 samples
+            # CFS.send_samples(
+            #     only_last_inferrometer_samples, 
+            #     radar_id=r_idx,
+            #     # channel_id=c_idx,
+            #     fcenter=12000,
+            #     meta_data=only_last_inferrometer_meta
+            # )            
+            # CFS.request_clr_freq(
+            #     radar_id=r_idx,
+            #     channel_id=c_idx,
+            #     beam_num=0,
+            #     clr_range=clear_freq_range,
+            #     sample_sep=340,
+            # )
+            # print("Only last inferro test complete")
+            
+            # # 2. Blank main array samples, but still inferrometer array samples
+            # CFS.send_samples(
+            #     blank_main_samples, 
+            #     radar_id=r_idx,
+            #     # channel_id=c_idx,
+            #     fcenter=12000,
+            #     meta_data=blank_main_meta
+            # )
+            # CFS.request_clr_freq(
+            #     radar_id=r_idx,
+            #     channel_id=c_idx,
+            #     beam_num=0,
+            #     clr_range=clear_freq_range,
+            #     sample_sep=340,
+            # )
+            # print("blank test complete")
+            
+            # # 3. Weak samples, all antennas
+            # CFS.send_samples(
+            #     weak_samples,
+            #     radar_id=r_idx,
+            #     # channel_id=c_idx,
+            #     fcenter=12000,
+            #     meta_data=weak_meta
+            # )
+            # CFS.request_clr_freq(
+            #     radar_id=r_idx,
+            #     channel_id=c_idx,
+            #     beam_num=0,
+            #     clr_range=clear_freq_range,
+            #     sample_sep=340,
+            # )
+            # print("weak test complete")
+
+            # # 4. Trimmed samples, only first X antennas
+            # CFS.send_samples(
+            #     trimmed_samples, 
+            #     radar_id=r_idx,
+            #     # channel_id=c_idx,
+            #     fcenter=12000,
+            #     meta_data=meta_data
+            # )
+            # CFS.request_clr_freq(
+            #     radar_id=r_idx,
+            #     channel_id=c_idx,
+            #     beam_num=0,
+            #     clr_range=clear_freq_range,
+            #     sample_sep=340,
+            # )
+            # print("trimmed test complete")
