@@ -999,26 +999,26 @@ while (i < 5):
                 fcenter=12000,
                 meta_data=meta_data
             )
-            CFS.request_clr_freq(
-                radar_id=r_idx,
-                channel_id=c_idx,
-                beam_num=0,
-                clr_range=tight_clr_range,
-                sample_sep=340,
-            )
+            # CFS.request_clr_freq(
+            #     radar_id=r_idx,
+            #     channel_id=c_idx,
+            #     beam_num=0,
+            #     clr_range=tight_clr_range,
+            #     sample_sep=340,
+            # )
             
             if (meta_data == only_last_inferrometer_meta): print("meta and only last inferro meta are identical")
             
            
 
-            # for beam_idx in range(0, 15, 3):
-            #     CFS.request_clr_freq(
-            #         radar_id=r_idx,
-            #         #channel_id=c_idx,
-            #         beam_num=beam_idx,
-            #         clr_range=clear_freq_range, 
-            #         sample_sep=340,     # only necesary on first request or if changing
-                # )
+            for beam_idx in range(0, 15, 4):
+                CFS.request_clr_freq(
+                    radar_id=r_idx,
+                    channel_id=c_idx,
+                    beam_num=beam_idx,
+                    clr_range=tight_clr_range, 
+                    sample_sep=340,     # only necesary on first request or if changing
+                )
             
     i += 1
 
