@@ -75,6 +75,7 @@ int ini_parse(const char* filename, ini_handler handler, void* user);
                                     // then minimum frequency separation is used then ceiling-ed to be a factor of (# of avgs * freq per sample))
 
 #define MIN_ANT_PWR 10              // Minimum Antenna Power to consider antenna as active
+#define MAX_ANT_PWR 25000           // Max Antenna Power (currently only used to WARN during TCS)
 
 #define IDX_LAST_IA 19              // Last Interferrometer Array
 #define IDX_LAST_MA 15              // Last Main Array
