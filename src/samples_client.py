@@ -898,13 +898,11 @@ def read_restrict_file(restrict_file):
 
 
 
-RESTRICT_FILE = "/home/df/Desktop/PSU-SuperDARN/Freq_Server/utils/misc_param/restrict.dat.inst"
 CFS = ClearFrequencyService(sid='lab')
 
 # raw_samples, meta_data = read_sample_pickle("/data/repos/Freq_Server/utils/pickle_input/clrfreq_dump.1.pickle")
-raw_samples, meta_data = read_sample_pickle("/home/df/Desktop/PSU-SuperDARN/Freq_Server/utils/pickle_input/clrfreq_dump.1.pickle")
+raw_samples, meta_data = read_sample_pickle("/home/Hearing/Desktop/PSU-repos/cfsDev/utils/pickle_input/clrfreq_dump.1.pickle")
 clear_freq_range = [ int(12 * pow(10,6)), int(12.5 * pow(10,6)) ]
-# restrict_data=read_restrict_file(RESTRICT_FILE)
 
 
 
