@@ -562,7 +562,7 @@ void write_clr_log_csv(freq_band **clr_storage, int clr_num, int radar_id) {
     // Generate timestamp
     log_trace("Generating timestamp...");
     time(&raw_time);
-    time_info = localtime(&raw_time);
+    time_info = gmtime(&raw_time);
     strftime(timestamp, buffer_size, "%Y.%m.%d_%H:%M:%S", time_info);
     snprintf(name, sizeof(name), "log/clr_freq/clrlog_%s.r%d.csv", timestamp, radar_id);
 
@@ -1529,6 +1529,11 @@ int main() {
 
                     // Default: Process Clear Search
                     else {
+                        for (int i = 0; i > STATIC_ANTENNA_NUM; i++) {
+                            log_debug("active antennas[%d]: %d", i, active_antennas[i]);
+                        }
+
+
                         log_info( "Clr Freq @ Beam #%d ...", cur_beam);
                         log_info( "Starting Clear Freq Search...");
                         clear_freq_search(
