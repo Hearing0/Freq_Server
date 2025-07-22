@@ -581,7 +581,7 @@ void write_clr_log_csv(freq_band **clr_storage, int clr_num, int radar_id) {
     // Generate timestamp
     log_trace("Generating timestamp...");
     time(&raw_time);
-    time_info = localtime(&raw_time);
+    time_info = gmtime(&raw_time);
     strftime(timestamp, buffer_size, "%Y.%m.%d_%H:%M:%S", time_info);
     snprintf(name, sizeof(name), "log/clr_freq/clrlog_%s.r%d.csv", timestamp, radar_id);
 
@@ -1661,8 +1661,8 @@ int main() {
                         
                         // Reserve the frequency band 
                         radar_table[cur_radar][cur_channel].clr_band = clr_bands[i];
-                        radar_table[cur_radar][cur_channel].clear_freq_range[0] = clr_range[0];
-                        radar_table[cur_radar][cur_channel].clear_freq_range[1] = clr_range[1];
+                        radar_table[cur_radar][cur_channel].clear_freq_range[0] = clr_range[cur_radar][0];
+                        radar_table[cur_radar][cur_channel].clear_freq_range[1] = clr_range[cur_radar][1];
                         if (restricted_num + cur_radar * STATIC_CHANNEL_NUM + cur_channel >= RESTRICT_NUM) {
                             log_error("    ERROR: Reservation into restricted_freq failed due to overflow index!");
                             perror("ERROR: Reservation into restricted_freq failed due to overflow index!");
