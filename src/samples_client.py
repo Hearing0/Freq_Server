@@ -26,11 +26,12 @@ class ClearFrequencyService():
     DOUBLE_SIZE = 8
     
     # Shared Memory Object and Semaphores Constants
-    SAMPLES_NUM  = 2500
-    ANTENNA_NUM = 16
-    RESTRICT_NUM = 20
-    META_ELEM    = 3                                    # 3 = 4 - 1 (fcenter has unique obj)
-    CLR_BAND_MAX = 6
+    SAMPLES_NUM         = 2500
+    ANTENNA_NUM         = 16
+    STATIC_ANTENNA_NUM  =20 
+    RESTRICT_NUM        = 20
+    META_ELEM           = 3                                    # 3 = 4 - 1 (fcenter has unique obj)
+    CLR_BAND_MAX        = 6
     
     SAMPLES_ELEM_NUM    = ANTENNA_NUM * SAMPLES_NUM * 2
     CLR_RANGE_ELEM_NUM  = 2
@@ -44,7 +45,7 @@ class ClearFrequencyService():
     FCENTER_SHM_SIZE        = (1 * INT_SIZE)
     BEAM_NUM_SHM_SIZE       = (1 * INT_SIZE)
     SAMPLE_SEP_SHM_SIZE     = (1 * INT_SIZE)
-    RESTRICT_SHM_SIZE       = (RESTRICT_NUM * 2 * INT_SIZE)          # 2 = start and end freqs
+    RESTRICT_SHM_SIZE       = (RESTRICT_NUM * 2 * INT_SIZE)             # 2 = start and end freqs
     META_DATA_SHM_SIZE      = ((META_ELEM + ANTENNA_NUM) * DOUBLE_SIZE)
     ANTENNA_SHM_SIZE        = (1 * INT_SIZE)
     CLR_BANDS_SHM_SIZE      = (1 * INT_SIZE * 3)     # TODO: Round to convert freqs to int again 
@@ -52,6 +53,7 @@ class ClearFrequencyService():
     RADAR_ID_SHM_SIZE       = (1 * INT_SIZE)
     CHANNEL_ID_SHM_SIZE     = (1 * INT_SIZE)
     ACTIVE_CLIENTS_SHM_SIZE = (1 * INT_SIZE)
+    MUTED_ANT_SHM_SIZE      = (STATIC_ANTENNA_NUM * INT_SIZE)           # List of Muted Antennas
 
     RETRY_ATTEMPTS = 3
     RETRY_DELAY = 2  # seconds
@@ -70,6 +72,7 @@ class ClearFrequencyService():
     RADAR_ID_SHM_NAME =         "/radar_id"
     CHANNEL_ID_SHM_NAME =       "/channel_id"
     ACTIVE_CLIENTS_SHM_NAME =   "/active_clients"   # For Debugging
+    MUTED_ANT_SHM_NAME =        "/muted_ant"
 
     # Semaphore Constants
     SAMPLE_PARAM_NUM =      2
@@ -141,7 +144,8 @@ class ClearFrequencyService():
                 self.create_shm_obj(self.SITE_ID_SHM_NAME,          self.SITE_ID_SHM_SIZE       , self.SITE_ID_ELEM_NUM),
                 self.create_shm_obj(self.RADAR_ID_SHM_NAME,         self.RADAR_ID_SHM_SIZE      , ),
                 self.create_shm_obj(self.CHANNEL_ID_SHM_NAME,       self.CHANNEL_ID_SHM_SIZE    , ),
-                self.create_shm_obj(self.ACTIVE_CLIENTS_SHM_NAME,   self.ACTIVE_CLIENTS_SHM_SIZE, )
+                self.create_shm_obj(self.ACTIVE_CLIENTS_SHM_NAME,   self.ACTIVE_CLIENTS_SHM_SIZE, ),
+                self.create_shm_obj(self.MUTED_ANT_SHM_NAME,        self.MUTED_ANT_SHM_SIZE     , self.STATIC_ANTENNA_NUM)
             ]
 
             for obj in ClearFrequencyService.shm_objects:
@@ -481,10 +485,16 @@ class ClearFrequencyService():
         obj['shm_ptr'].seek(0)
         read_data = struct.unpack('i' * obj['elem_num'], obj['shm_ptr'].read(obj['size']))
         
-        # Debug: Verify format of data object's raw data
-        # print("[clearFrequencyService] Data read from Shm: ", read_data[:5], "...")  # Print first 10 integers for brevity
+        # Filter out filler/dummy constants
+        result = []
+        for elem in read_data:
+            if elem >= 0:
+                result.append(elem)
         
-        return read_data
+        # Debug: Verify format of data object's raw data
+        print("[clearFrequencyService] Data read from Shm: ", result[:5], "...")  # Print first 10 integers for brevity
+        
+        return result
     
     
     def repack_data(self, read_data, clr_freq = False, data_size = 1, data_sub_size = 1):
@@ -680,6 +690,16 @@ class ClearFrequencyService():
                 print("[clearFrequencyService] Requesting Server Response...")
                 self.sf_server['sem'].release()
                 
+                
+                # Wait for Processed Data
+                self.sf_processed['sem'].acquire()
+                self.sl_samples['sem'].acquire()
+                
+                self.muted_antennas = []
+                self.muted_antennas = self.read_m_data(self.shm_objects[13])
+                # print(f"[ClearFrequencyService] Muted Antennas: {self.muted_antennas}")                
+                
+                self.sl_samples['sem'].release()
                         
         except KeyboardInterrupt:
             print("[clearFrequencyService] Keyboard interrupt received. Exiting...")
