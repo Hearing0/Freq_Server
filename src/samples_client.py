@@ -7,6 +7,7 @@ import posix_ipc
 import pickle       # To read in pickle test samples
 import numpy as np
 import copy
+import logging
 
 
 
@@ -154,7 +155,7 @@ class ClearFrequencyService():
             ClearFrequencyService.active_clients_fd = None
             self.initialize_active_clients_counter()
             print("[clearFrequencyService] Done Initializing...\n\n")
-            self.log.debug("clearFrequencyService initialized")
+            # self.log.debug("clearFrequencyService initialized")
 
         except ValueError:
             print("[ClearFrequencyService] Initialization Failed. Cleaning up SHM Objects and Semaphores...")
@@ -922,7 +923,7 @@ def read_restrict_file(restrict_file):
 CFS = ClearFrequencyService(sid='lab')
 
 # raw_samples, meta_data = read_sample_pickle("/data/repos/Freq_Server/utils/pickle_input/clrfreq_dump.1.pickle")
-raw_samples, meta_data = read_sample_pickle("/home/df/Desktop/PSU-repos/cfsDev/utils/pickle_input/clrfreq_dump.1.pickle")
+raw_samples, meta_data = read_sample_pickle("/home/Hearing/Desktop/PSU-repos/cfsDev/utils/pickle_input/clrfreq_dump.1.pickle")
 clear_freq_range = [ int(12 * pow(10,6)), int(12.5 * pow(10,6)) ]
 
 
