@@ -1118,7 +1118,7 @@ void process_avg_ant_pwr (
     }
 
     overall_avg_pwr /= meta_data->num_antennas;
-    double min_pwr_threshold = 1; 
+    double min_pwr_threshold = 1;
     if (overall_avg_pwr > 0) {
         min_pwr_threshold = overall_avg_pwr * MIN_ANT_PWR_MULT;
     } else {

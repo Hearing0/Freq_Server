@@ -1670,7 +1670,7 @@ int main() {
                 log_info( "-> ant#%d[radar#%d][%s]: %d (missed %d)", 
                     ant_idx,
                     cur_radar, 
-                    ant_status, //(active_antennas[cur_radar][ant_idx] > 0 && (ant_idx <= IDX_LAST_MA || ant_idx > IDX_LAST_IA)) ? "  active" : "inactive",
+                    ant_status,
                     avg_ant_pwr,
                     valid_sample_cycles - ant_active_ct[cur_radar][ant_idx]
                 );
