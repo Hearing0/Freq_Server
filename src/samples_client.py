@@ -1005,6 +1005,18 @@ def flatten_raw_into_int_bytes(arr):
 clear_freq_range = [int(12 * pow(10,6)), int(12.22 * pow(10,6))]
 tight_clr_range = [int(12.1 * pow(10,6)), int(12.2 * pow(10,6))]
 
+alt_range_1 = [int(13.1 * pow(10,6)), int(13.2 * pow(10,6))]
+alt_range_2 = [int(11.1 * pow(10,6)), int(11.2 * pow(10,6))]
+alt_range_3 = [int(12.1 * pow(10,6)), int(12.2 * pow(10,6))]
+alt_range_4 = [int(12.4 * pow(10,6)), int(12.7 * pow(10,6))]
+
+ranges = [
+    alt_range_1,
+    alt_range_2,
+    alt_range_3,
+    alt_range_4
+]
+
 i = 0
 while (i < 5):
    
@@ -1025,20 +1037,18 @@ while (i < 5):
             #     beam_num=0,
             #     clr_range=tight_clr_range,
             #     sample_sep=340,
-            # )
-            
-            if (meta_data == only_last_inferrometer_meta): print("meta and only last inferro meta are identical")
-            
+            # )            
            
 
             for beam_idx in range(0, 15, 4):
-                CFS.request_clr_freq(
-                    radar_id=r_idx,
-                    channel_id=c_idx,
-                    beam_num=beam_idx,
-                    clr_range=tight_clr_range, 
-                    sample_sep=340,     # only necesary on first request or if changing
-                )
+                for range_elem in ranges: 
+                    CFS.request_clr_freq(
+                        radar_id=r_idx,
+                        channel_id=c_idx,
+                        beam_num=beam_idx,
+                        clr_range=range_elem, 
+                        sample_sep=340,     # only necesary on first request or if changing
+                    )
             
     i += 1
 
