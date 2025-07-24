@@ -1291,10 +1291,10 @@ int main() {
 
                 // If clr_range is not set, default clr_range to usrp_fcenter -/+ 0.5 * usrp_rf_rate
                 if (clr_range[0][0] == 0 && clr_range[0][1] == 0) {
-                    log_info( "Setting default clr_range...");
+                    log_info( "Setting default clr_range for all radars...");
                     for (int i = 0; i < STATIC_RADAR_NUM; i++) {
-                        clr_range[i][0] = (meta_data.usrp_fcenter * 1000 - (0.5 * meta_data.usrp_rf_rate)) / 1000;
-                        clr_range[i][1] = (meta_data.usrp_fcenter * 1000 + (0.5 * meta_data.usrp_rf_rate)) / 1000;
+                        clr_range[i][0] = (meta_data.usrp_fcenter * 1000 - (meta_data.usrp_rf_rate / 2)) / 1000;
+                        clr_range[i][1] = (meta_data.usrp_fcenter * 1000 + (meta_data.usrp_rf_rate / 2)) / 1000;
                     }
                     log_info( "Default clr_range set to %d -- %d", clr_range[0][0], clr_range[0][1]);
                 }
