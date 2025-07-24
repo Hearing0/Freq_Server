@@ -1307,12 +1307,12 @@ int main() {
 
                 if (USE_MULTI_RANGE) {
                     // Process Spectra for all Clear Range
-                    for (int range_idx = 0; range_idx < STATIC_RANGE_NUM; range_idx) {
+                    for (int range_idx = 0; range_idx < STATIC_RANGE_NUM; range_idx++) {
                         // Process Spectra 
                         process_all_beamformed_spectras(
                                 temp_samples,
                                 active_antennas[cur_radar],
-                                clr_range[cur_radar][cur_range], 
+                                clr_range[cur_radar][range_idx], 
                                 sample_sep, 
                                 restricted_freq, 
                                 restricted_num,
@@ -1320,29 +1320,29 @@ int main() {
                                 array_config,
                                 &(spectra_storage[
                                     cur_radar * STATIC_RANGE_NUM *  STORAGE_NUM * beam_total * samples_num + 
-                                    cur_range * STORAGE_NUM * beam_total * samples_num +
-                                    tcs_storage_i[cur_radar][cur_range] * beam_total * samples_num
+                                    range_idx * STORAGE_NUM * beam_total * samples_num +
+                                    tcs_storage_i[cur_radar][range_idx] * beam_total * samples_num
                                 ])
                             );
     
                         // Display TCS state
                         log_info( "[TCS] Processed Radar[%d][%d --  %d]'s spectra_storage[%d/%d] successfully...", 
                             cur_radar, 
-                            clr_range[cur_radar][cur_range][0],
-                            clr_range[cur_radar][cur_range][1],
-                            tcs_storage_i[cur_radar][cur_range] + 1, 
+                            clr_range[cur_radar][range_idx][0],
+                            clr_range[cur_radar][range_idx][1],
+                            tcs_storage_i[cur_radar][range_idx] + 1, 
                             STORAGE_NUM
                         );
-                        tcs_storage_i[cur_radar][cur_range] += 1;
+                        tcs_storage_i[cur_radar][range_idx] += 1;
     
-                        if (tcs_storage_i[cur_radar][cur_range] >= STORAGE_NUM) {
+                        if (tcs_storage_i[cur_radar][range_idx] >= STORAGE_NUM) {
                             log_info( "[TCS] Radar[%d][%d -- %d] Storage is now Ready...", 
                                 cur_radar, 
-                                clr_range[cur_radar][cur_range][0], 
-                                clr_range[cur_radar][cur_range][1]
+                                clr_range[cur_radar][range_idx][0], 
+                                clr_range[cur_radar][range_idx][1]
                             );
-                            is_tcs_ready [cur_radar][cur_range] = true;
-                            tcs_storage_i[cur_radar][cur_range] = 0;
+                            is_tcs_ready [cur_radar][range_idx] = true;
+                            tcs_storage_i[cur_radar][range_idx] = 0;
                         } 
                     }
                 }
@@ -1792,16 +1792,19 @@ int main() {
             //     );
             // }
 
-            // Display Radar Table Information
-            log_debug( "Radar Table Information:");
+            // Display Radar Reservation Info Table
+            log_debug( "Radar Reservation Info:");
             for (int r_idx = 0; r_idx < radar_num; r_idx++) {
                 for (int c_idx = 0; c_idx < STATIC_CHANNEL_NUM; c_idx++) {
                     if (radar_table[r_idx][c_idx].clr_band.f_start != 0 && radar_table[r_idx][c_idx].clr_band.f_end != 0) {
-                        log_debug( "    Radar[%d] Channel[%d]: | %dHz -- Noise: %f -- %dHz |",
+                        log_debug( "    Radar[%d] Channel[%d]: | %5dkHz -- Noise: %-9.2f -- %5dkHz | in range: | %5dkHz -- %5dkHz |",
                             r_idx, c_idx, 
-                            radar_table[r_idx][c_idx].clr_band.f_start, 
+                            radar_table[r_idx][c_idx].clr_band.f_start      / 1000, 
                             radar_table[r_idx][c_idx].clr_band.noise, 
-                            radar_table[r_idx][c_idx].clr_band.f_end);
+                            radar_table[r_idx][c_idx].clr_band.f_end        / 1000,
+                            radar_table[r_idx][c_idx].clear_freq_range[0]   / 1000,
+                            radar_table[r_idx][c_idx].clear_freq_range[1]   / 1000
+                        );
                     }
                 }
             }
