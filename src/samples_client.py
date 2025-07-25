@@ -8,6 +8,7 @@ import pickle       # To read in pickle test samples
 import numpy as np
 import copy
 import logging
+import random
 
 
 
@@ -923,7 +924,7 @@ def read_restrict_file(restrict_file):
 CFS = ClearFrequencyService(sid='lab')
 
 # raw_samples, meta_data = read_sample_pickle("/data/repos/Freq_Server/utils/pickle_input/clrfreq_dump.1.pickle")
-raw_samples, meta_data = read_sample_pickle("/home/Hearing/Desktop/PSU-repos/cfsDev/utils/pickle_input/clrfreq_dump.1.pickle")
+raw_samples, meta_data = read_sample_pickle("/home/df/Desktop/PSU-SuperDARN/Freq_Server/utils/pickle_input/clrfreq_dump.1.pickle")
 clear_freq_range = [ int(12 * pow(10,6)), int(12.5 * pow(10,6)) ]
 
 
@@ -1010,7 +1011,7 @@ alt_range_2 = [int(11.1 * pow(10,6)), int(11.2 * pow(10,6))]
 alt_range_3 = [int(12.1 * pow(10,6)), int(12.2 * pow(10,6))]
 alt_range_4 = [int(12.4 * pow(10,6)), int(12.7 * pow(10,6))]
 
-ranges = [
+clr_ranges = [
     alt_range_1,
     alt_range_2,
     alt_range_3,
@@ -1018,7 +1019,7 @@ ranges = [
 ]
 
 i = 0
-while (i < 5):
+while (i < 20):
    
     for r_idx in range(0, 2):
         for c_idx in range(0, 2):
@@ -1041,14 +1042,14 @@ while (i < 5):
            
 
             for beam_idx in range(0, 15, 4):
-                for range_elem in ranges: 
-                    CFS.request_clr_freq(
-                        radar_id=r_idx,
-                        channel_id=c_idx,
-                        beam_num=beam_idx,
-                        clr_range=range_elem, 
-                        sample_sep=340,     # only necesary on first request or if changing
-                    )
+                range_elem = clr_ranges[random.randint(0,3)]
+                CFS.request_clr_freq(
+                    radar_id=r_idx,
+                    channel_id=c_idx,
+                    beam_num=beam_idx,
+                    clr_range=range_elem, 
+                    sample_sep=340,     # only necesary on first request or if changing
+                )
             
     i += 1
 

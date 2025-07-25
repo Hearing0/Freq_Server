@@ -360,7 +360,7 @@ void find_clear_freqs(double *spectrum, sample_meta_data meta_data, double avg_d
                 // Special: Shift inter_band band right till overwritten 
                 if (insert_idx < intersect_idx) {
                     // Debug: verify bands shift properly @ sample
-                    // if (i == 10) for (int j = 0; j < CLR_BANDS_MAX; j++) {
+                    // for (int j = 0; j < CLR_BANDS_MAX; j++) {
                     //     log_trace("Clear Freq Band[%d]: | %dMHz -- Noise: %f -- %dMHz |", j, clr_bands[j].f_start, clr_bands[j].noise, clr_bands[j].f_end);
                     // }
                     
