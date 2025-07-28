@@ -1011,6 +1011,13 @@ clr_ranges = [
     alt_range_4
 ]
 
+fcenters = [
+    (12000 + random.randint(-1000,2000)),
+    (12000 + random.randint(-1000,2000)),
+    (12000 + random.randint(-1000,2000)),
+    (12000 + random.randint(-1000,2000)),
+]
+
 i = 0
 while (i < 20):
    
@@ -1035,13 +1042,16 @@ while (i < 20):
            
 
             for beam_idx in range(0, 15, 4):
-                range_elem = clr_ranges[random.randint(0,3)]
+                rand_elem = random.randint(0,3)
+                range_elem = clr_ranges[rand_elem]
+                fcenter_elem = fcenters[rand_elem]
                 CFS.request_clr_freq(
                     radar_id=r_idx,
                     channel_id=c_idx,
                     beam_num=beam_idx,
                     clr_range=range_elem, 
                     sample_sep=340,     # only necesary on first request or if changing
+                    fcenter=rand_elem
                 )
             
     i += 1
