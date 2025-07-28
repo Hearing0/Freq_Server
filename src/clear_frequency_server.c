@@ -1005,7 +1005,7 @@ int main() {
     };
     int valid_sample_cycles = 0;                                        // num of times valid samples were in send() cycle 
     int ccn_invalid_sample_cyles = 0;                                   // num of times in a row invalid samples were in send() cycle
-    int accu_avg_ant_pwr[STATIC_RADAR_NUM][STATIC_ANTENNA_NUM] = {0};   // integrated avg antenna power from sample sets for an accurate avg ant power
+    long accu_avg_ant_pwr[STATIC_RADAR_NUM][STATIC_ANTENNA_NUM] = {0};  // integrated avg antenna power from sample sets for an accurate avg ant power
     int active_antennas[STATIC_RADAR_NUM][STATIC_ANTENNA_NUM] = {0};    // active antennas for each radar
     int ant_active_ct[STATIC_RADAR_NUM][STATIC_ANTENNA_NUM] = {0};      // num of times antenna was active
     int active_ant_num = 0;
@@ -1448,6 +1448,13 @@ int main() {
                 log_debug( "Sample Separation reading...");
                 read_single_int(&sample_sep, sample_sep_obj.shm_ptr);
                 log_debug("    sample_sep: %d", sample_sep);
+            }
+
+            // Read Center Frequency
+            if (*(int*) (fcenter_obj.shm_ptr) != 0) {
+                log_debug( "Freq Center reading...");
+                read_single_int( &(meta_data.usrp_fcenter), fcenter_obj.shm_ptr);
+                log_debug("    fcenter: %d", meta_data.usrp_fcenter);
             }
 
             // Read Radar ID
