@@ -1,5 +1,6 @@
 {
     "files.associations": {
+        "*.c": "c",
         "string.h": "c",
         "stdlib.h": "c",
         "unistd.h": "c",
@@ -7,7 +8,14 @@
         "complex.h": "c",
         "ini.h": "c",
         "sstream": "c",
-        "ini_parser.h": "c"
+        "ini_parser.h": "c",
+        "optional": "c",
+        "system_error": "c",
+        "array": "c",
+        "functional": "c",
+        "tuple": "c",
+        "type_traits": "c",
+        "utility": "c"
     },
     "docomment.activateOnEnter": true,
     "C_Cpp.errorSquiggles": "enabled",
