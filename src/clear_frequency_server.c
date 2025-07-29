@@ -537,69 +537,6 @@ void write_clr_log_csv(freq_band **clr_storage, int clr_num, int radar_id) {
     fclose(file);
 }
 
-void flag_debug() {
-
-    log_warn("[FLAG DEBUGGING] All functionality except for semaphore flags is absent!");
-    log_warn("[FLAG DEBUGGING] Comment out the flag_debug() function to revert to standard functionality.\n");
-
-    // Debug: Verify that the flags are down 
-    int test = sem_trywait(sf_server.sem);
-    log_info("sf_server was recieved if 0: %d", test);
-    int test1 = sem_trywait(sf_init.sem);
-    log_info("sf_int was recieved if 0: %d", test1);
-    int test2 = sem_trywait(sf_samples.sem);
-    log_info("sf_samples was recieved if 0: %d", test2);
-    int test3 = sem_trywait(sf_clrfreq.sem);
-    log_info("sf_clrfrqe was recieved if 0: %d\n", test3);
-    
-    // Debug: Check if semaphore flags are signaled in correct order
-    int i = 0;
-    while(true) {
-        log_info( "Requesting new client to respond...\n");
-        sem_post(sf_client.sem); 
-        log_info( "Awaiting client response...");
-        sem_wait(sf_server.sem);   
-        log_info( "Processing CF Client...");
-
-        test1 = sem_trywait(sf_init.sem);
-        if (test1) {
-            sem_wait(sl_init.sem);
-            sem_post(sl_init.sem);
-        }
-        // test2 = sem_trywait(sf_samples.sem);
-        if (sem_trywait(sf_samples.sem) == 0) {
-            log_info( "Aquiring sample semlock...");
-            sem_wait(sl_samples.sem);
-            sleep(1);
-            sem_post(sl_samples.sem);
-            log_info( "Samples & Clr Freq processed...\n");
-        }
-        // log_info("checking clr_freq");
-        // test3 = sem_trywait(sf_clrfreq.sem);
-        if (sem_trywait(sf_clrfreq.sem) == 0) {           
-            // Lock Write Clear Freq Data
-            log_info( "Aquiring Semaphore Locks...");
-            sem_wait(sl_clrfreq.sem);
-            sem_wait(sl_samples.sem);
-            log_info( "Writing clear frequency data to Shared Memory...");
-            
-            // Read beam num
-            // write clr freq
-            
-            log_info( "clrfreq_shm written...");
-            sem_post(sl_samples.sem);
-            sem_post(sl_clrfreq.sem);
-            sem_post(sf_clrfreq.sem);
-            log_info( "Processed Clear Freq Request successfully...\n");
-        }
-        
-        // log_info("sf was recieved if 0: %d %d %d %d", test, test1, test2, test3);
-        sleep(1);
-    }
-
-    return;
-};
-
 /**
  * @brief  Reallocates the long-term dynamic memory for storage variables, which is reliant on samples_num.
  * @note   
@@ -1035,9 +972,6 @@ int main() {
         exit(EXIT_FAILURE);
     }
 
-    // Debug: Check Semaphore Flag order
-    // flag_debug();
-
     // Continuously process clients via shared memory
     while (1) {
         log_info( "Requesting new client to respond...");
@@ -1305,6 +1239,8 @@ int main() {
                             clr_range[i][j][0] = (meta_data.usrp_fcenter * 1000 - (meta_data.usrp_rf_rate / 2));
                             clr_range[i][j][1] = (meta_data.usrp_fcenter * 1000 + (meta_data.usrp_rf_rate / 2));
                         }
+                        def_low_range [i] = (meta_data.usrp_fcenter * 1000 - (meta_data.usrp_rf_rate / 2));
+                        def_high_range[i] = (meta_data.usrp_fcenter * 1000 + (meta_data.usrp_rf_rate / 2));
                     }
                     log_info( "Default clr_range set to %d -- %d", clr_range[0][0][0], clr_range[0][0][1]);
                 }
@@ -1312,19 +1248,19 @@ int main() {
                 if (USE_MULTI_RANGE == 1) {
                     log_info("Processing samples in Multi Range Mode...");
 
-                    // Process Spectra for current and non-TCS-ready Clear Ranges 
+                    // Process Spectra for current Clear Range (and next Clear Range if 1+ Spectral Processing is enabled) 
                     for (int range_idx = 0; range_idx < STATIC_RANGE_NUM; range_idx++) {
-                        if (is_tcs_ready[cur_radar][range_idx] == false || 
-                            cur_range == range_idx || 
-                            ((cur_range + 1) == range_idx && ONE_PLUS_PROCESSING > 0)
-                        ) {
+                        if (cur_range == range_idx   ||   ((cur_range + 1) % STATIC_RANGE_NUM == range_idx && ONE_PLUS_PROCESSING > 0)) {
                             
                             // Special: Skip processing of default clear ranges, unless Client is scanning entire usrp range
-                            if (clr_range[cur_radar][range_idx][0] == def_low_range  && 
-                                clr_range[cur_radar][range_idx][1] == def_high_range &&
+                            if (clr_range[cur_radar][range_idx][0] == def_low_range [cur_radar] && 
+                                clr_range[cur_radar][range_idx][1] == def_high_range[cur_radar] &&
                                 using_full_usrp_range[cur_radar][range_idx] == false
                             ) {
-                                log_trace("skipping range #%d", range_idx);
+                                log_trace("skipping range [%5d -- %5d]...",
+                                    clr_range[cur_radar][range_idx][0] / 1000, 
+                                    clr_range[cur_radar][range_idx][1] / 1000
+                                );
                                 continue;
                             }
                             
@@ -1514,12 +1450,6 @@ int main() {
 
                 // If Clear Range exists, don't overwrite and set as cur_range
                 bool range_exists = false;
-                if (def_low_range[cur_radar] == 0) {
-                    // Only store the default usrp range
-                    log_trace("storing usrp range for radar#%d", cur_radar);
-                    def_low_range[cur_radar] = (meta_data.usrp_fcenter * 1000 - (meta_data.usrp_rf_rate / 2));
-                    def_high_range[cur_radar]= (meta_data.usrp_fcenter * 1000 + (meta_data.usrp_rf_rate / 2));
-                }
                 if (USE_MULTI_RANGE == 1) {
                     // If Multi Range Optimization, Check existing clear ranges
                     for (int i = 0; i < STATIC_RANGE_NUM; i++) {
@@ -1528,12 +1458,17 @@ int main() {
                             old_clr_range[0] = clr_range[cur_radar][i][0];
                             old_clr_range[1] = clr_range[cur_radar][i][1]; 
                             cur_range = i;
-                            log_debug("    matching_range: %d -- %d Hz", tmp_clr_range[0], tmp_clr_range[1]);
                         }
+                        log_debug("    tmp_clr_range: %d -- %d Hz", tmp_clr_range[0], tmp_clr_range[1]);
 
                         // Special: Client wants full usrp range
-                        if (def_low_range[cur_radar] == tmp_clr_range[0] && def_high_range[cur_radar] == tmp_clr_range[1]) using_full_usrp_range[cur_radar][i] = true;
-                        else using_full_usrp_range[cur_radar][i] = false;
+                        if (def_low_range[cur_radar] == tmp_clr_range[0] && def_high_range[cur_radar] == tmp_clr_range[1]) {
+                            log_trace("searching full usrp range");
+                            using_full_usrp_range[cur_radar][i] = true;
+                        } else {
+                            log_trace("not searching full usrp range");
+                            using_full_usrp_range[cur_radar][i] = false;
+                        } 
                     }
                 } else {
                     // If Single Range Optimization, only check 1st range

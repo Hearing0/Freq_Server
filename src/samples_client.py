@@ -1003,6 +1003,7 @@ alt_range_1 = [int(13.1 * pow(10,6)), int(13.2 * pow(10,6))]
 alt_range_2 = [int(11.1 * pow(10,6)), int(11.2 * pow(10,6))]
 alt_range_3 = [int(12.1 * pow(10,6)), int(12.2 * pow(10,6))]
 alt_range_4 = [int(12.4 * pow(10,6)), int(12.7 * pow(10,6))]
+# alt_range_4 = [int( 9.5 * pow(10,6)), int(14.5* pow(10,6))]
 
 clr_ranges = [
     alt_range_1,
