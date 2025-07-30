@@ -402,10 +402,11 @@ void find_clear_freqs(double *spectrum, sample_meta_data meta_data, double avg_d
     }
 
 
-    // Only pass non-intersecting bands to clr_bands
+    // Filter non-intersecting bands to clr_bands
     int curr_clr_band_idx = 0;
-    for (int i = 0; i < CLR_BANDS_MAX * 3; i++) {
+    for (int i = 0; i < CLR_BANDS_MAX * 3; i++) {       // Start with lowest noise clr_bands
         freq_band curr_band = lowest_clr_bands[i];
+        bool cur_band_intersects = false;
 
         // Success: All Clr Bands Found
         if (curr_clr_band_idx >= CLR_BANDS_MAX) {
@@ -413,34 +414,41 @@ void find_clear_freqs(double *spectrum, sample_meta_data meta_data, double avg_d
             break;
         }
 
-        // General: Check curr_band with clr_bands for intersections
-        for (int j = 0; j < curr_clr_band_idx; j++) {
-            if (clr_bands[j].f_start == 0) {
-                break;
+        // General: Check curr_band for intersections with stored clr_bands
+        if (curr_clr_band_idx > 0) {    // First band is always the lowest noise band
+            for (int j = 0; j < curr_clr_band_idx; j++) {
+    
+                // Check freq bound intersection
+                if ( (clr_bands[j].f_start < curr_band.f_start && curr_band.f_start < clr_bands[j].f_end) ||
+                     (clr_bands[j].f_start < curr_band.f_end && curr_band.f_end < clr_bands[j].f_end)
+                    ) {
+                        log_trace("    Found intersection with clr_bands[%d]: | %dMHz -- Noise: %f -- %dMHz |", 
+                            j, 
+                            clr_bands[j].f_start, 
+                            clr_bands[j].noise, 
+                            clr_bands[j].f_end
+                        );
+                        
+                        // Skip to next cur_band if intersection found
+                        cur_band_intersects = true;
+                        break;
+                    }
             }
-
-            // log_trace("    Checking intersection with clr_bands[%d]: | %dMHz -- Noise: %f -- %dMHz |", j, clr_bands[j].f_start, clr_bands[j].noise, clr_bands[j].f_end);
-            if ( (clr_bands[j].f_start < curr_band.f_start && curr_band.f_start < clr_bands[j].f_end) ||
-                 (clr_bands[j].f_start < curr_band.f_end && curr_band.f_end < clr_bands[j].f_end)
-                ) {
-                    log_trace("    Found intersection with clr_bands[%d]: | %dMHz -- Noise: %f -- %dMHz |", j, clr_bands[j].f_start, clr_bands[j].noise, clr_bands[j].f_end);
-                    
-                    // Skip to next band if intersection found
-                    break;
-                    continue;
-                }
         }
 
-        // No Intersection Found; Insert curr_band into clr_bands
-        clr_bands[curr_clr_band_idx].f_start = curr_band.f_start;
-        clr_bands[curr_clr_band_idx].f_end = curr_band.f_end;
-        clr_bands[curr_clr_band_idx].noise = curr_band.noise;
-        log_trace("    Inserting Clear Freq Band[%d]: | %dMHz -- Noise: %f -- %dMHz |", 
-            curr_clr_band_idx, 
-            clr_bands[curr_clr_band_idx].f_start, 
-            clr_bands[curr_clr_band_idx].noise, 
-            clr_bands[curr_clr_band_idx].f_end
-        );
+        // If curr band doesn't intersect, insert curr_band into clr_bands
+        if (!cur_band_intersects) {
+            log_trace("    Inserting Clear Freq Band[%d]: | %dMHz -- Noise: %f -- %dMHz |", 
+                curr_clr_band_idx, 
+                clr_bands[curr_clr_band_idx].f_start, 
+                clr_bands[curr_clr_band_idx].noise, 
+                clr_bands[curr_clr_band_idx].f_end
+            );            
+            clr_bands[curr_clr_band_idx].f_start = curr_band.f_start;
+            clr_bands[curr_clr_band_idx].f_end = curr_band.f_end;
+            clr_bands[curr_clr_band_idx].noise = curr_band.noise;
+        }
+
         curr_clr_band_idx++;
     }
 
