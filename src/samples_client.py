@@ -8,6 +8,7 @@ import pickle       # To read in pickle test samples
 import numpy as np
 import copy
 import logging
+import random
 
 
 
@@ -27,12 +28,11 @@ class ClearFrequencyService():
     DOUBLE_SIZE = 8
 
     # Shared Memory Object and Semaphores Constants
-    SAMPLES_NUM         = 2500
-    ANTENNA_NUM         = 16
-    STATIC_ANTENNA_NUM  = 20 
-    RESTRICT_NUM        = 20
-    META_ELEM           = 3                                    # 3 = 4 - 1 (fcenter has unique obj)
-    CLR_BAND_MAX        = 6
+    SAMPLES_NUM  = 5000
+    ANTENNA_NUM = 16
+    RESTRICT_NUM = 20
+    META_ELEM    = 3                                    # 3 = 4 - 1 (fcenter has unique obj)
+    CLR_BAND_MAX = 6
 
     SAMPLES_ELEM_NUM    = ANTENNA_NUM * SAMPLES_NUM * 2
     CLR_RANGE_ELEM_NUM  = 2
@@ -46,15 +46,14 @@ class ClearFrequencyService():
     FCENTER_SHM_SIZE        = (1 * INT_SIZE)
     BEAM_NUM_SHM_SIZE       = (1 * INT_SIZE)
     SAMPLE_SEP_SHM_SIZE     = (1 * INT_SIZE)
-    RESTRICT_SHM_SIZE       = (RESTRICT_NUM * 2 * INT_SIZE)             # 2 = start and end freqs
+    RESTRICT_SHM_SIZE       = (RESTRICT_NUM * 2 * INT_SIZE)          # 2 = start and end freqs
     META_DATA_SHM_SIZE      = ((META_ELEM + ANTENNA_NUM) * DOUBLE_SIZE)
     ANTENNA_SHM_SIZE        = (1 * INT_SIZE)
-    CLR_BANDS_SHM_SIZE      = (1 * INT_SIZE * 3)
+    CLR_BANDS_SHM_SIZE      = (1 * INT_SIZE * 3)     # TODO: Round to convert freqs to int again
     SITE_ID_SHM_SIZE        = (3 * CHAR_SIZE)
     RADAR_ID_SHM_SIZE       = (1 * INT_SIZE)
     CHANNEL_ID_SHM_SIZE     = (1 * INT_SIZE)
     ACTIVE_CLIENTS_SHM_SIZE = (1 * INT_SIZE)
-    MUTED_ANT_SHM_SIZE      = (STATIC_ANTENNA_NUM * INT_SIZE)           # List of Muted Antennas
 
     RETRY_ATTEMPTS = 3
     RETRY_DELAY = 2  # seconds
@@ -73,7 +72,6 @@ class ClearFrequencyService():
     RADAR_ID_SHM_NAME =         "/radar_id"
     CHANNEL_ID_SHM_NAME =       "/channel_id"
     ACTIVE_CLIENTS_SHM_NAME =   "/active_clients"   # For Debugging
-    MUTED_ANT_SHM_NAME =        "/muted_ant"
 
     # Semaphore Constants
     SAMPLE_PARAM_NUM =      2
@@ -99,8 +97,9 @@ class ClearFrequencyService():
     cur_antenna_num = ANTENNA_NUM
     old_meta_data = [[], 0, 0.0, 0.0]
     old_smsep = 0
-    
-    
+
+    log = logging.getLogger('clearFrequency')
+
     def __init__(self, sid = 'lab'):
         # Process Site ID during Sample Send
         ClearFrequencyService.sid = sid
@@ -145,8 +144,7 @@ class ClearFrequencyService():
                 self.create_shm_obj(self.SITE_ID_SHM_NAME,          self.SITE_ID_SHM_SIZE       , self.SITE_ID_ELEM_NUM),
                 self.create_shm_obj(self.RADAR_ID_SHM_NAME,         self.RADAR_ID_SHM_SIZE      , ),
                 self.create_shm_obj(self.CHANNEL_ID_SHM_NAME,       self.CHANNEL_ID_SHM_SIZE    , ),
-                self.create_shm_obj(self.ACTIVE_CLIENTS_SHM_NAME,   self.ACTIVE_CLIENTS_SHM_SIZE, ),
-                self.create_shm_obj(self.MUTED_ANT_SHM_NAME,        self.MUTED_ANT_SHM_SIZE     , self.STATIC_ANTENNA_NUM)
+                self.create_shm_obj(self.ACTIVE_CLIENTS_SHM_NAME,   self.ACTIVE_CLIENTS_SHM_SIZE, )
             ]
 
             for obj in ClearFrequencyService.shm_objects:
@@ -155,7 +153,7 @@ class ClearFrequencyService():
             ClearFrequencyService.active_clients_fd = None
             self.initialize_active_clients_counter()
             print("[clearFrequencyService] Done Initializing...\n\n")
-            # self.log.debug("clearFrequencyService initialized")
+            self.log.debug("clearFrequencyService initialized")
 
         except ValueError:
             print("[ClearFrequencyService] Initialization Failed. Cleaning up SHM Objects and Semaphores...")
@@ -487,19 +485,13 @@ class ClearFrequencyService():
         """
         obj['shm_ptr'].seek(0)
         read_data = struct.unpack('i' * obj['elem_num'], obj['shm_ptr'].read(obj['size']))
-        
-        # Filter out filler/dummy constants
-        result = []
-        for elem in read_data:
-            if elem >= 0:
-                result.append(elem)
-        
+
         # Debug: Verify format of data object's raw data
-        print("[clearFrequencyService] Data read from Shm: ", result[:5], "...")  # Print first 10 integers for brevity
-        
-        return result
-    
-    
+        # print("[clearFrequencyService] Data read from Shm: ", read_data[:5], "...")  # Print first 10 integers for brevity
+
+        return read_data
+
+
     def repack_data(self, read_data, clr_freq = False, data_size = 1, data_sub_size = 1):
         """Repacks read data from SHM into its specified format. Currently repacks
         the following:
@@ -530,6 +522,7 @@ class ClearFrequencyService():
             ## Check for Premapped antenna num
             # Map shared memory object pointer for antenna num
             print(f"Mapping {self.shm_objects[7]['name']}")
+            self.log.debug("[clearFrequencyService] Verifying Antenna and Sample size")
             self.shm_objects[7]['shm_ptr'] = mmap.mmap(self.shm_objects[7]['shm_fd'], self.shm_objects[7]['size'], mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE)
 
             # Check if Antenna Num changed, update corresponding values before they're mapped
@@ -551,9 +544,13 @@ class ClearFrequencyService():
                 samples_obj['elem_num'] = len(meta_data['antenna_list']) * int(meta_data['number_of_samples']) * 2
                 samples_obj['size'] = samples_obj['elem_num'] * self.INT_SIZE
                 os.ftruncate(samples_obj['shm_fd'], samples_obj['size'])
-                
+
+            self.log.debug("[clearFrequencyService] Verifying Antenna and Sample size done")
+
+
             # Map shared memory object pointers
             print(f"Mapping Shared Memory for Objects...\n")
+            self.log.debug("[clearFrequencyService] Mapping SHM")
             for obj in self.shm_objects:
                 # Special: Skip Antenna_Num mapping
                 if obj['name'] == '/antenna_num':
@@ -665,8 +662,11 @@ class ClearFrequencyService():
                 self.sf_init['sem'].release()
                 print("[clearFrequencyService] Initialization Semaphore Released ...")
                 print("[clearFrequencyService] Server Initialization Flag raised ...")
+                self.log.debug("[clearFrequencyService] Writing Initializaton data to SHM done")
 
             if raw_samples is not None:
+                self.log.debug("[clearFrequencyService] Writing Sample data to SHM")
+
                 print("[clearFrequencyService] Awaiting Sample Semphore Lock...")
                 self.sl_samples['sem'].acquire()
 
@@ -687,22 +687,14 @@ class ClearFrequencyService():
                 self.sl_samples['sem'].release()
                 self.sf_samples['sem'].release()
                 print("[Frequency Client] Done writing data to Shared Memory...")
-                
-                # Request Server 
+                self.log.debug("[clearFrequencyService] Writing Sample data to SHM done")
+
+                # Request Server
                 print("[clearFrequencyService] Requesting Server Response...")
+                self.log.debug("[clearFrequencyService] Requesting Server response")
                 self.sf_server['sem'].release()
-                
-                
-                # Wait for Processed Data
-                self.sf_processed['sem'].acquire()
-                self.sl_samples['sem'].acquire()
-                
-                self.muted_antennas = []
-                self.muted_antennas = self.read_m_data(self.shm_objects[13])
-                # print(f"[ClearFrequencyService] Muted Antennas: {self.muted_antennas}")                
-                
-                self.sl_samples['sem'].release()
-                        
+
+
         except KeyboardInterrupt:
             print("[clearFrequencyService] Keyboard interrupt received. Exiting...")
         except posix_ipc.ExistentialError or ValueError or AttributeError:
@@ -712,7 +704,7 @@ class ClearFrequencyService():
 
         return 
 
-    def request_clr_freq(self, radar_id, channel_id, beam_num=None, sample_sep=None, clr_range=None, ):
+    def request_clr_freq(self, radar_id, channel_id, beam_num=None, sample_sep=None, clr_range=None, fcenter=None):
         """ Waits for client requests, then processes server data, writes client 
             data, and requests server to process new data. When process is 
             terminated, the try/finally block cleans up.\
@@ -721,8 +713,9 @@ class ClearFrequencyService():
         """
 
         input_data = [
+            fcenter,
             clr_range,
-            beam_num, 
+            beam_num,
             sample_sep,
         ]
 
@@ -747,12 +740,12 @@ class ClearFrequencyService():
             self.sl_clrfreq['sem'].acquire()
             print("[clearFrequencyService] ClrFreq Semaphore Acquired...")
 
-            for i in range(self.SAMPLE_PARAM_NUM, self.SAMPLE_PARAM_NUM + 3):
-                
+            for i in range(self.SAMPLE_PARAM_NUM-1, self.SAMPLE_PARAM_NUM + 3):
+
                 # If data present, write to SHM
-                if input_data[i - self.SAMPLE_PARAM_NUM] is not None:
+                if input_data[i - 1] is not None:
                     print(f"[Frequency Client] Data Write: {self.shm_objects[i]['name']}")
-                    self.write_data(self.shm_objects[i], input_data[i - self.SAMPLE_PARAM_NUM])
+                    self.write_data(self.shm_objects[i], input_data[i - 1])
 
             # Write Radar ID
             print(f"[Frequency Client] Data Write: {self.shm_objects[10]['name']}")
@@ -784,7 +777,8 @@ class ClearFrequencyService():
             for clr_freq_and_noise in zip(new_clrfreq_data, new_noise_data):
                 print(f"[clearFrequencyService] Clear Freq Band: | {clr_freq_and_noise[0]} (kHz), {clr_freq_and_noise[1]} (N/A) |")
             clr_freq, noise = new_clrfreq_data[0], new_noise_data[0]
-            
+            self.log.debug("[clearFrequencyService] clr_freq recieved...")
+
             self.sl_clrfreq['sem'].release()
 
         except KeyboardInterrupt:
@@ -1005,8 +999,21 @@ def flatten_raw_into_int_bytes(arr):
 clear_freq_range = [int(12 * pow(10,6)), int(12.22 * pow(10,6))]
 tight_clr_range = [int(12.1 * pow(10,6)), int(12.2 * pow(10,6))]
 
+alt_range_1 = [int(13.1 * pow(10,6)), int(13.2 * pow(10,6))]
+alt_range_2 = [int(11.1 * pow(10,6)), int(11.2 * pow(10,6))]
+alt_range_3 = [int(12.1 * pow(10,6)), int(12.2 * pow(10,6))]
+alt_range_4 = [int(12.4 * pow(10,6)), int(12.7 * pow(10,6))]
+# alt_range_4 = [int( 9.5 * pow(10,6)), int(14.5* pow(10,6))]
+
+clr_ranges = [
+    alt_range_1,
+    alt_range_2,
+    alt_range_3,
+    alt_range_4
+]
+
 i = 0
-while (i < 5):
+while (i < 20):
    
     for r_idx in range(0, 2):
         for c_idx in range(0, 2):
@@ -1025,18 +1032,16 @@ while (i < 5):
             #     beam_num=0,
             #     clr_range=tight_clr_range,
             #     sample_sep=340,
-            # )
-            
-            if (meta_data == only_last_inferrometer_meta): print("meta and only last inferro meta are identical")
-            
+            # )            
            
 
             for beam_idx in range(0, 15, 4):
+                range_elem = clr_ranges[random.randint(0,3)]
                 CFS.request_clr_freq(
                     radar_id=r_idx,
                     channel_id=c_idx,
                     beam_num=beam_idx,
-                    clr_range=tight_clr_range, 
+                    clr_range=range_elem, 
                     sample_sep=340,     # only necesary on first request or if changing
                 )
             
