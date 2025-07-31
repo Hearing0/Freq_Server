@@ -1015,103 +1015,85 @@ int main() {
             sem_wait(sl_init.sem);
             log_info( "Initialization data read...");
 
-            // Read Meta Data
-            // if ( *(double*) (meta_obj.shm_ptr) != 0) {
+            // Read Antenna number
+            log_debug( "Antenna Number reading...");
+            read_single_int(&meta_data.num_antennas, antenna_obj.shm_ptr);
+            
+            // If new num_antennas, Reallocate meta SHM 
+            if (meta_data.num_antennas != old_antenna_num) {
+                log_info( "Reallocating Meta Shared Memory...");
+                log_debug("num of antenna: %d", meta_data.num_antennas);
 
-                // Read Antenna number
-                log_debug( "Antenna Number reading...");
-                read_single_int(&meta_data.num_antennas, antenna_obj.shm_ptr);
+                log_trace( "Freeing Meta SHM Cache...");
+                munmap(meta_obj.shm_ptr, meta_obj.size);
                 
-                // If new num_antennas, Reallocate meta SHM 
-                if (meta_data.num_antennas != old_antenna_num) {
-                    log_info( "Reallocating Meta Shared Memory...");
-                    log_debug("num of antenna: %d", meta_data.num_antennas);
+                // Set Size of meta_data SHM Object
+                log_trace( "Setting Size of Meta SHM Cache...");
+                meta_obj.size = (meta_data.num_antennas + META_ELEM) * sizeof(double);
+                if (ftruncate(meta_obj.shm_fd, meta_obj.size) == -1) {
+                    log_fatal( " ftruncate failed");
+                    perror("ftruncate failed");
+                    exit(EXIT_FAILURE);
+                }
 
-                    log_trace( "Freeing Meta SHM Cache...");
-                    munmap(meta_obj.shm_ptr, meta_obj.size);
-                    
-                    // Set Size of meta_data SHM Object
-                    log_trace( "Setting Size of Meta SHM Cache...");
-                    meta_obj.size = (meta_data.num_antennas + META_ELEM) * sizeof(double);
-                    if (ftruncate(meta_obj.shm_fd, meta_obj.size) == -1) {
-                        log_fatal( " ftruncate failed");
-                        perror("ftruncate failed");
-                        exit(EXIT_FAILURE);
+                // Request meta_data's Block of Memory
+                log_trace( "Requesting Meta SHM Cache...");                    
+                meta_obj.shm_ptr = mmap(0, meta_obj.size, PROT_WRITE | PROT_READ, MAP_SHARED, meta_obj.shm_fd, 0);
+                if (meta_obj.shm_ptr == MAP_FAILED) {
+                    log_fatal( "Memory Mapping failed for %s", meta_obj.name);
+                    perror("Memory Mapping failed");
+                    exit(EXIT_FAILURE);
+                }                    
+                log_trace( "Meta Data successfully cached...");     
+                
+                // Read Meta Data 
+                log_trace( "Meta Data reading...");
+                read_meta_data(&meta_data, meta_obj.shm_ptr, meta_data.num_antennas);
+                samples_num = meta_data.number_of_samples;
+
+                // Reallocate Samples SHM
+                log_info( "Reallocating Sample related Memory due to change in Antenna Num...");
+                realloc_samples(samples_num);
+            
+                old_antenna_num = meta_data.num_antennas;
+                log_info( "Reallocation due to change in Antenna Num done...");
+            }
+            
+            // Default: Read in Meta Data
+            else {
+                log_trace( "Meta Data reading...");
+                read_meta_data(&meta_data, meta_obj.shm_ptr, meta_data.num_antennas);
+                samples_num = meta_data.number_of_samples;
+            }
+            
+            // If critical TCS parameters have changed, reset TCS
+            new_tcs_param[0] = samples_num;
+            new_tcs_param[1] = beam_total;
+            new_tcs_param[2] = meta_data.usrp_rf_rate;
+            if (has_tcs_param_changed(old_tcs_param, new_tcs_param) == true) {
+                log_info( "TCS Parameters changed...");
+                for (int r_idx = 0; r_idx < radar_num; r_idx++) {
+                    for (int range_idx = 0; range_idx < STATIC_RANGE_NUM; range_idx++) {
+                        is_tcs_ready [r_idx][range_idx] = false;
+                        tcs_storage_i[r_idx][range_idx] = 0;
                     }
-
-                    // Request meta_data's Block of Memory
-                    log_trace( "Requesting Meta SHM Cache...");                    
-                    meta_obj.shm_ptr = mmap(0, meta_obj.size, PROT_WRITE | PROT_READ, MAP_SHARED, meta_obj.shm_fd, 0);
-                    if (meta_obj.shm_ptr == MAP_FAILED) {
-                        log_fatal( "Memory Mapping failed for %s", meta_obj.name);
-                        perror("Memory Mapping failed");
-                        exit(EXIT_FAILURE);
-                    }                    
-                    log_trace( "Meta Data successfully cached...");     
-
-                    
-                    // Read Meta Data 
-                    log_trace( "Meta Data reading...");
-                    read_meta_data(&meta_data, meta_obj.shm_ptr, meta_data.num_antennas);
-                    samples_num = meta_data.number_of_samples;
-
-                    
-                    // Reallocate Samples SHM
-                    log_info( "Reallocating Sample related Memory due to change in Antenna Num...");
-                    realloc_samples(samples_num);
-                    
-
-                    old_antenna_num = meta_data.num_antennas;
-                    log_info( "Reallocation due to change in Antenna Num done...");
                 }
                 
-                // Default: Read in Meta Data
-                else {
-                    log_trace( "Meta Data reading...");
-                    read_meta_data(&meta_data, meta_obj.shm_ptr, meta_data.num_antennas);
-                    samples_num = meta_data.number_of_samples;
+                realloc_storage(samples_num, beam_total, radar_num, avg_ratio);
 
-                }
-                
-                // If critical TCS parameters have changed, reset TCS
-                new_tcs_param[0] = samples_num;
-                new_tcs_param[1] = beam_total;
-                new_tcs_param[2] = meta_data.usrp_rf_rate;
-                if (has_tcs_param_changed(old_tcs_param, new_tcs_param) == true) {
-                    log_info( "TCS Parameters changed...");
-                    for (int r_idx = 0; r_idx < radar_num; r_idx++) {
-                        for (int range_idx = 0; range_idx < STATIC_RANGE_NUM; range_idx++) {
-                            is_tcs_ready [r_idx][range_idx] = false;
-                            tcs_storage_i[r_idx][range_idx] = 0;
-                        }
+                // Reset Avg Antenna Power and Missing Antenna Trackers
+                valid_sample_cycles = 0;
+                ccn_invalid_sample_cyles = 0;
+                for (int r_idx = 0; r_idx < radar_num; r_idx++) {
+                    for(int ant_idx = 0; ant_idx < STATIC_ANTENNA_NUM; ant_idx++) {
+                        accu_avg_ant_pwr[r_idx][ant_idx] = 0;
+                        ant_active_ct[r_idx][ant_idx] = 0;
                     }
-                    
-                    realloc_storage(samples_num, beam_total, radar_num, avg_ratio);
-
-                    // Reset Avg Antenna Power and Missing Antenna Trackers
-                    valid_sample_cycles = 0;
-                    ccn_invalid_sample_cyles = 0;
-                    for (int r_idx = 0; r_idx < radar_num; r_idx++) {
-                        for(int ant_idx = 0; ant_idx < STATIC_ANTENNA_NUM; ant_idx++) {
-                            accu_avg_ant_pwr[r_idx][ant_idx] = 0;
-                            ant_active_ct[r_idx][ant_idx] = 0;
-                        }
-                    }
-                    // log_info( "Reinitializing TCS FFTW plan...");
-                    // cleanup_storage_fft();
-                    // init_storage_fft(samples_num, beam_total);
                 }
-                
-
-                for (int j = 0; j < meta_data.num_antennas; j++) {
-                    log_trace("    antenna_list[%d]: %d", j, meta_data.antenna_list[j]);
-                }
-                log_debug("     num_antennas: %d", meta_data.num_antennas);
-                log_debug("     num_samples : %d", meta_data.number_of_samples);
-                log_debug("     fcenter: passed during sample DT");
-                log_debug("     rf_rate     : %d", meta_data.usrp_rf_rate);
-                log_debug("     x_spacing   : %f", meta_data.x_spacing);
-            // }
+                // log_info( "Reinitializing TCS FFTW plan...");
+                // cleanup_storage_fft();
+                // init_storage_fft(samples_num, beam_total);
+            }
             
             // Debug: Display meta_data info
             for (int j = 0; j < meta_data.num_antennas; j++) {
