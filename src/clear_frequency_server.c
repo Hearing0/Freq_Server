@@ -964,8 +964,6 @@ int main() {
     
     // Parameters for Reading Restricted Frequencies
     char restrict_file[255] = "";
-    char ststr[SITE_ID_ELEM + 1] = {0}; 
-    char new_site_id[SITE_ID_ELEM + 1] = {0};
     char *rst_path = getenv("RSTPATH");
     if (rst_path == NULL) {
         log_fatal( "$RSTPATH not found. Restrict Freq file is inaccessible.\n");
@@ -1114,33 +1112,6 @@ int main() {
                 log_debug("     rf_rate     : %d", meta_data.usrp_rf_rate);
                 log_debug("     x_spacing   : %f", meta_data.x_spacing);
             // }
-
-            /// Read Restricted Frequency (by grabbing site ID then reading its restricted freq file)
-            log_debug( "Site ID reading...");
-            read_site_id_data(new_site_id, site_id_obj.shm_ptr, SITE_ID_ELEM);
-            log_debug("    Site ID: %s", ststr);
-            log_debug("    New Site ID: %s", new_site_id);
-    
-            // If first client or new ststr, proceed to read in ststr and Restrict File
-            if (strcmp(new_site_id, ststr) != 0) {
-                log_info( "Site ID assigned, getting site's Resticted Frequencies ...");
-                strncpy(ststr, new_site_id, SITE_ID_ELEM);
-                ststr[SITE_ID_ELEM] = '\0'; 
-                int str_f_result = 0; 
-
-                // Get site specific restrict file and join with path
-                if (strcmp(new_site_id,"lab") != 0) {
-                    log_info( "Using /site.%s/restrict.dat.inst in ststr\n", ststr);
-                    str_f_result = snprintf(restrict_file, sizeof(restrict_file), "%s/tables/superdarn/site/site.%s/restrict.dat.inst", rst_path, ststr);
-                    if (str_f_result < 1) {
-                        log_error( " site path format failed");
-                        return 1;
-                    }
-                }
-                // log_info( "Reinitializing TCS FFTW plan...");
-                // cleanup_storage_fft();
-                // init_storage_fft(samples_num, beam_total);
-            }
             
             // Debug: Display meta_data info
             for (int j = 0; j < meta_data.num_antennas; j++) {
