@@ -46,14 +46,15 @@ class ClearFrequencyService():
     FCENTER_SHM_SIZE        = (1 * INT_SIZE)
     BEAM_NUM_SHM_SIZE       = (1 * INT_SIZE)
     SAMPLE_SEP_SHM_SIZE     = (1 * INT_SIZE)
-    RESTRICT_SHM_SIZE       = (RESTRICT_NUM * 2 * INT_SIZE)          # 2 = start and end freqs
+    RESTRICT_SHM_SIZE       = (RESTRICT_NUM * 2 * INT_SIZE)             # 2 = start and end freqs
     META_DATA_SHM_SIZE      = ((META_ELEM + ANTENNA_NUM) * DOUBLE_SIZE)
     ANTENNA_SHM_SIZE        = (1 * INT_SIZE)
-    CLR_BANDS_SHM_SIZE      = (1 * INT_SIZE * 3)     # TODO: Round to convert freqs to int again
+    CLR_BANDS_SHM_SIZE      = (1 * INT_SIZE * 3)
     SITE_ID_SHM_SIZE        = (3 * CHAR_SIZE)
     RADAR_ID_SHM_SIZE       = (1 * INT_SIZE)
     CHANNEL_ID_SHM_SIZE     = (1 * INT_SIZE)
     ACTIVE_CLIENTS_SHM_SIZE = (1 * INT_SIZE)
+    MUTED_ANT_SHM_SIZE      = (STATIC_ANTENNA_NUM * INT_SIZE)           # List of Muted Antennas
 
     RETRY_ATTEMPTS = 3
     RETRY_DELAY = 2  # seconds
@@ -72,6 +73,7 @@ class ClearFrequencyService():
     RADAR_ID_SHM_NAME =         "/radar_id"
     CHANNEL_ID_SHM_NAME =       "/channel_id"
     ACTIVE_CLIENTS_SHM_NAME =   "/active_clients"   # For Debugging
+    MUTED_ANT_SHM_NAME =        "/muted_ant"
 
     # Semaphore Constants
     SAMPLE_PARAM_NUM =      2
@@ -94,15 +96,14 @@ class ClearFrequencyService():
     # Service Variables
     semaphores = []
     shm_objects = []
+    muted_antennas = []
     cur_antenna_num = ANTENNA_NUM
     old_meta_data = [[], 0, 0.0, 0.0]
     old_smsep = 0
 
     log = logging.getLogger('clearFrequency')
 
-    def __init__(self, sid = 'lab'):
-        # Process Site ID during Sample Send
-        ClearFrequencyService.sid = sid
+    def __init__(self):
 
         try:
             # Skip Initialization if SHMs exists
@@ -144,7 +145,8 @@ class ClearFrequencyService():
                 self.create_shm_obj(self.SITE_ID_SHM_NAME,          self.SITE_ID_SHM_SIZE       , self.SITE_ID_ELEM_NUM),
                 self.create_shm_obj(self.RADAR_ID_SHM_NAME,         self.RADAR_ID_SHM_SIZE      , ),
                 self.create_shm_obj(self.CHANNEL_ID_SHM_NAME,       self.CHANNEL_ID_SHM_SIZE    , ),
-                self.create_shm_obj(self.ACTIVE_CLIENTS_SHM_NAME,   self.ACTIVE_CLIENTS_SHM_SIZE, )
+                self.create_shm_obj(self.ACTIVE_CLIENTS_SHM_NAME,   self.ACTIVE_CLIENTS_SHM_SIZE, ),
+                self.create_shm_obj(self.MUTED_ANT_SHM_NAME,        self.MUTED_ANT_SHM_SIZE     , self.STATIC_ANTENNA_NUM)
             ]
 
             for obj in ClearFrequencyService.shm_objects:
@@ -390,9 +392,9 @@ class ClearFrequencyService():
                     flattened_data.append(array_data[i])
                 # Place antenna list last
                 flattened_data += array_data[0]
-            elif atype == "sid":
-                for letter in array_data:
-                    flattened_data.append(bytes(letter, 'ascii'))
+            # elif atype == "sid":
+            #     for letter in array_data:
+            #         flattened_data.append(bytes(letter, 'ascii'))
             else:
                 # Otherwise, just flatten
                 list_of_lists = self.find_list_of_lists(array_data)
@@ -415,8 +417,8 @@ class ClearFrequencyService():
             dtype = 'i'
             if atype == 'meta':
                 dtype = 'd'
-            elif atype == "sid":
-                dtype = b'c'
+            # elif atype == "sid":
+            #     dtype = b'c'
             else:
                 dtype = self.detect_dtype(flattened_data)
             print(f"dtype: {dtype}, elem_num: {obj['elem_num']}, ")
@@ -433,11 +435,6 @@ class ClearFrequencyService():
                     print("[Frequency Client] Writing data:\n", flattened_data)
 
                 obj['shm_ptr'].seek(0)
-                if atype == 'sid':
-                    print(f"ascii bytes: {flattened_data}")
-                    print(f"dtype argument: {dtype * obj['elem_num']}")
-                #     obj['shm_ptr'].write(struct.pack(dtype * obj['elem_num'], bytes(flattened_data, 'ascii')))
-                # else:
                 obj['shm_ptr'].write(struct.pack(dtype * obj['elem_num'], *flattened_data))
             else:
                 print("[Frequency Client] new_data len of: ", 1)
@@ -485,13 +482,19 @@ class ClearFrequencyService():
         """
         obj['shm_ptr'].seek(0)
         read_data = struct.unpack('i' * obj['elem_num'], obj['shm_ptr'].read(obj['size']))
-
+        
+        # Filter out filler/dummy constants
+        result = []
+        for elem in read_data:
+            if elem >= 0:
+                result.append(elem)
+        
         # Debug: Verify format of data object's raw data
-        # print("[clearFrequencyService] Data read from Shm: ", read_data[:5], "...")  # Print first 10 integers for brevity
-
-        return read_data
-
-
+        print("[clearFrequencyService] Data read from Shm: ", result[:5], "...")  # Print first 10 integers for brevity
+        
+        return result
+    
+    
     def repack_data(self, read_data, clr_freq = False, data_size = 1, data_sub_size = 1):
         """Repacks read data from SHM into its specified format. Currently repacks
         the following:
@@ -512,6 +515,9 @@ class ClearFrequencyService():
                 packed_data.append(int(((start_freq + end_freq) / 2) / 1000))
                 noise_data.append(noise)
             return packed_data, noise_data
+    
+    def get_muted_antenna_list(self):
+        return self.muted_antennas
 
     def premap_shm(self, meta_data=None):
         """Premaps all shared memory objects' pointers to their memory addresses.
@@ -559,7 +565,7 @@ class ClearFrequencyService():
                 obj['shm_ptr'] = mmap.mmap(obj['shm_fd'], obj['size'], mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE)
 
 
-    def send_samples(self, raw_samples, radar_id, fcenter=None, meta_data=None):
+    def send_samples(self, raw_samples, radar_id = 0, fcenter=None, meta_data=None):
         """ Waits for client requests, then processes server data, writes client
             data, and requests server to process new data. When process is
             terminated, the try/finally block cleans up.
@@ -653,11 +659,6 @@ class ClearFrequencyService():
                     # Rearrange meta_data ordering
                     self.write_data(self.shm_objects[6], meta_data_list, 'meta')
 
-                # Write Site ID (SID)
-                print(f"[Frequency Client] Data Write Progress: {self.shm_objects[9]['name']}")
-                print(f"    len of objects list is {len(self.shm_objects)}")
-                self.write_data(self.shm_objects[9], self.sid, 'sid')
-
                 self.sl_init['sem'].release()
                 self.sf_init['sem'].release()
                 print("[clearFrequencyService] Initialization Semaphore Released ...")
@@ -693,8 +694,18 @@ class ClearFrequencyService():
                 print("[clearFrequencyService] Requesting Server Response...")
                 self.log.debug("[clearFrequencyService] Requesting Server response")
                 self.sf_server['sem'].release()
-
-
+                
+                
+                # Wait for Processed Data
+                self.sf_processed['sem'].acquire()
+                self.sl_samples['sem'].acquire()
+                
+                self.muted_antennas = []
+                self.muted_antennas = self.read_m_data(self.shm_objects[13])
+                # print(f"[ClearFrequencyService] Muted Antennas: {self.muted_antennas}")                
+                
+                self.sl_samples['sem'].release()
+                        
         except KeyboardInterrupt:
             print("[clearFrequencyService] Keyboard interrupt received. Exiting...")
         except posix_ipc.ExistentialError or ValueError or AttributeError:
