@@ -816,6 +816,7 @@ int main() {
     int cur_radar = 0;
     int *muted_config_ants = array_config.gain_control.mute_antenna_ids;
     int num_muted_config_ants = array_config.gain_control.num_mute_antennas;
+    char *ststr = array_config.array_info.radar_stid;
     log_info( "Done initializing Array Configuration...");
 
 
