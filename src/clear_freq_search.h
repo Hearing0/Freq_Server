@@ -30,6 +30,7 @@ typedef struct freq_band {
 typedef struct radar_freq_data {
     int clear_freq_range[2];
     freq_band clr_band;
+    
 } radar_freq_data;
 
 typedef struct clear_freq {
