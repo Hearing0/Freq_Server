@@ -28,11 +28,12 @@ class ClearFrequencyService():
     DOUBLE_SIZE = 8
 
     # Shared Memory Object and Semaphores Constants
-    SAMPLES_NUM  = 5000
-    ANTENNA_NUM = 16
-    RESTRICT_NUM = 20
-    META_ELEM    = 3                                    # 3 = 4 - 1 (fcenter has unique obj)
-    CLR_BAND_MAX = 6
+    SAMPLES_NUM         = 5000
+    ANTENNA_NUM         = 16
+    STATIC_ANTENNA_NUM  = 20 
+    RESTRICT_NUM        = 20
+    META_ELEM           = 3                                    # 3 = 4 - 1 (fcenter has unique obj)
+    CLR_BAND_MAX        = 6
 
     SAMPLES_ELEM_NUM    = ANTENNA_NUM * SAMPLES_NUM * 2
     CLR_RANGE_ELEM_NUM  = 2
@@ -578,6 +579,15 @@ class ClearFrequencyService():
         #     clr_range,
         ]
 
+        # Filter out Muted Antennas from data                
+        for i in range(0, len(meta_data['antenna_list'])):
+            tmp_arr = np.array(raw_samples[i])
+            # print(f"ndim is {tmp_arr.ndim} for ant {i}") 
+            if tmp_arr.ndim != 1:
+                del meta_data['antenna_list'][i]
+                print("removing muted ant from antenna_list")
+        meta_data['antenna_num'] = len(meta_data['antenna_list'])       
+
         meta_data_list = [
                         meta_data['antenna_list'],
                         meta_data['number_of_samples'],
@@ -925,7 +935,7 @@ def read_restrict_file(restrict_file):
 
 
 
-CFS = ClearFrequencyService(sid='lab')
+CFS = ClearFrequencyService()
 
 # raw_samples, meta_data = read_sample_pickle("/data/repos/Freq_Server/utils/pickle_input/clrfreq_dump.1.pickle")
 raw_samples, meta_data = read_sample_pickle("/home/Hearing/Desktop/PSU-repos/cfsDev/utils/pickle_input/clrfreq_dump.1.pickle")
@@ -1007,13 +1017,41 @@ def flatten_raw_into_int_bytes(arr):
 # Test flatten speed
 # timeit.timeit()
 
+
+# 
+# default=13410
+# 8100 9040
+# 9500 9900
+# 9995 10150
+# 10470 10520
+# 11175 11400
+# 11650 12050
+# 12230 13410
+# 13600 13800
+# 14000 14350
+# 14970 15600
+# 16360 17410
+# 17550 18030
+# 18068 18168
+# 18780 18900
+# 19680 19800
+# 19990 50000
+
+list1 = [0, 1, 0, 2, 0, 3, 4]
+listBlank = []
+for i in range(0, len(list1)):
+    if list1[i] > 0 or i == 0:
+        listBlank.append(list1[i])
+
+print(f"listBlank: {listBlank}")
+
 clear_freq_range = [int(12 * pow(10,6)), int(12.22 * pow(10,6))]
 tight_clr_range = [int(12.1 * pow(10,6)), int(12.2 * pow(10,6))]
 
-alt_range_1 = [int(13.1 * pow(10,6)), int(13.2 * pow(10,6))]
+alt_range_1 = [int(11.1 * pow(10,6)), int(13.2 * pow(10,6))]
 alt_range_2 = [int(11.1 * pow(10,6)), int(11.2 * pow(10,6))]
 alt_range_3 = [int(12.1 * pow(10,6)), int(12.2 * pow(10,6))]
-alt_range_4 = [int(12.4 * pow(10,6)), int(12.7 * pow(10,6))]
+alt_range_4 = [int(13.4 * pow(10,6)), int(14 * pow(10,6))]
 # alt_range_4 = [int( 9.5 * pow(10,6)), int(14.5* pow(10,6))]
 
 clr_ranges = [
@@ -1027,7 +1065,7 @@ i = 0
 while (i < 20):
    
     for r_idx in range(0, 2):
-        for c_idx in range(0, 2):
+        for c_idx in range(1, 3):
             
             meta_data['number_of_samples'] = 2500
             CFS.send_samples(
@@ -1037,24 +1075,26 @@ while (i < 20):
                 fcenter=12000,
                 meta_data=meta_data
             )
-            # CFS.request_clr_freq(
-            #     radar_id=r_idx,
-            #     channel_id=c_idx,
-            #     beam_num=0,
-            #     clr_range=tight_clr_range,
-            #     sample_sep=340,
-            # )            
+            CFS.request_clr_freq(
+                radar_id=r_idx,
+                channel_id=c_idx,
+                beam_num=0,
+                clr_range=tight_clr_range,
+                sample_sep=340,
+            )            
            
+            # break
+        break 
 
-            for beam_idx in range(0, 15, 4):
-                range_elem = clr_ranges[random.randint(0,3)]
-                CFS.request_clr_freq(
-                    radar_id=r_idx,
-                    channel_id=c_idx,
-                    beam_num=beam_idx,
-                    clr_range=range_elem, 
-                    sample_sep=340,     # only necesary on first request or if changing
-                )
+            # for beam_idx in range(0, 15, 4):
+            #     range_elem = clr_ranges[random.randint(0,3)]
+            #     CFS.request_clr_freq(
+            #         radar_id=r_idx,
+            #         channel_id=c_idx,
+            #         beam_num=beam_idx,
+            #         clr_range=range_elem, 
+            #         sample_sep=340,     # only necesary on first request or if changing
+            #     )
             
     i += 1
 
