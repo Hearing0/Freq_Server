@@ -1065,7 +1065,7 @@ i = 0
 while (i < 20):
    
     for r_idx in range(0, 2):
-        # for c_idx in range(0, 2):
+        for c_idx in range(1, 3):
             
             meta_data['number_of_samples'] = 2500
             CFS.send_samples(
@@ -1075,16 +1075,16 @@ while (i < 20):
                 fcenter=12000,
                 meta_data=meta_data
             )
-            # CFS.request_clr_freq(
-            #     radar_id=r_idx,
-            #     channel_id=c_idx,
-            #     beam_num=0,
-            #     clr_range=tight_clr_range,
-            #     sample_sep=340,
-            # )            
+            CFS.request_clr_freq(
+                radar_id=r_idx,
+                channel_id=c_idx,
+                beam_num=0,
+                clr_range=tight_clr_range,
+                sample_sep=340,
+            )            
            
             # break
-    break 
+        break 
 
             # for beam_idx in range(0, 15, 4):
             #     range_elem = clr_ranges[random.randint(0,3)]
@@ -1096,7 +1096,7 @@ while (i < 20):
             #         sample_sep=340,     # only necesary on first request or if changing
             #     )
             
-    # i += 1
+    i += 1
 
 
  # # Test Cases
