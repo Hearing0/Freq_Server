@@ -104,7 +104,12 @@ void write_spectrum_csv(char *filename, fftw_complex *spectrum, double *freq_vec
  * @param  num_samples:     Number of samples in spectrum
  * @retval None
  */
-void write_spectrum_mag_csv(char *filename, double *spectrum, double *freq_vector, int num_samples) {
+void write_spectrum_mag_csv(
+    char *filename, 
+    double *spectrum, 
+    double *freq_vector, 
+    int num_samples
+) {
     // Timestamp Variables
     time_t raw_time;
     struct tm *time_info;
@@ -112,19 +117,28 @@ void write_spectrum_mag_csv(char *filename, double *spectrum, double *freq_vecto
     char timestamp[buffer_size];
     char name[buffer_size]; 
 
+    log_trace("entered write");
+
     // Generate timestamp
     time(&raw_time);
     time_info = gmtime(&raw_time);
     strftime(timestamp, buffer_size, "%Y.%m.%d_%H:%M:%S", time_info);
+    log_trace("timestamp 1");
     snprintf(name, sizeof(name), filename, timestamp, "csv");
+
+    log_trace("timestamp ready");
 
     FILE *file = fopen(name, "w");
     if (file == NULL) {
         file_access_error(name);
         return;
     }
+
+    log_trace("file ready");
+
     fprintf(file, "Frequency,Power\n");
     for (int i = 0; i < num_samples; i++) {
+        log_trace("spectrum[%d]: %f", i, spectrum[i]);
         fprintf(file, "%f,%f\n", freq_vector[i], spectrum[i]);
     }
 
