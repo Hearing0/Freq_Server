@@ -30,7 +30,6 @@ typedef struct freq_band {
 typedef struct radar_freq_data {
     int clear_freq_range[2];
     freq_band clr_band;
-    
 } radar_freq_data;
 
 typedef struct clear_freq {
@@ -48,8 +47,8 @@ int ini_parse(const char* filename, ini_handler handler, void* user);
 
 // Define Constants
 #define CLR_NOISE_THRESHOLD 250000  // Noise Threshold for a clear band to be considered a valid usable band
-#define GB_MULT 4                   // Guard Band Multiplier (Transmission bandwidth * GB_MULT = clear_bw = clear_freq bandwidth)
-#define MIN_FREQ_SEP 8000           // Minimum Frequency Separation (in Hz), guard band will be kept at and above this value.  
+#define GB_MULT 1.25                   // Guard Band Multiplier (Transmission bandwidth * GB_MULT = clear_bw = clear_freq bandwidth)
+#define MIN_FREQ_SEP 1500           // Minimum Frequency Separation (in Hz), guard band will be kept at and above this value.  
 
 #define MIN_ANT_PWR_MULT .2         // Cutoff point relative to overall average antenna power. Anything below cutoff will be muted.
 #define MAX_ANT_PWR 25000           // Debug: used to flag high power samples during TCS's process_beamformed_samples
@@ -64,7 +63,7 @@ int ini_parse(const char* filename, ini_handler handler, void* user);
 
 
 // Config and Debug Flags
-#define BIN_OR_CSV_LOG  1   // 0 for Bin, otherwise CSV
+#define BIN_OR_CSV_LOG  0   // 0 for Bin, otherwise CSV
 
 #define TEST_SAMPLES 0
 #define TEST_CLR_RANGE 1

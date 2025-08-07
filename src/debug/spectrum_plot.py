@@ -92,7 +92,7 @@ for index, row in clr_freq_data.iterrows():
     end_freq = row['End Frequency'] / 1e6  # Convert to MHz
     noise = row['Noise']
     
-    # Ignore Dummy Bands 
+    # Ignore Irregular Bands 
     if noise < 100e3:
         # Mark the frequency band
         plt.axvspan(start_freq, end_freq, color=colors[index], alpha=.5)        
