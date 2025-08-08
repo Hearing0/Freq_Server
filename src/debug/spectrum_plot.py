@@ -71,7 +71,10 @@ Freq = spectra_data['Frequency'].to_numpy() / 1e6  # Convert Frequency to MHz
 # Plot spectrum data
 plt.figure(figsize=(16, 12))  # Increase the figure size
 # if 'Clear Freq Start' in clr_freq_data.columns and 'Clear Freq End' in clr_freq_data.columns:
-#     plt.xlim(clr_freq_data['Clear Freq Start'][0] / 1e6, clr_freq_data['Clear Freq End'][0] / 1e6)
+plt.xlim(Freq[0], Freq[-1])
+# print(f"clr_freq_data['Clear Freq Start'][0] / 1e6, clr_freq_data['Clear Freq End'][0] / 1e6: {clr_freq_data['Clear Freq Start'][0] / 1e6}, {clr_freq_data['Clear Freq End'][0] / 1e6}")
+print(f"Freq[0], Freq[-1]: {Freq[0]}, {Freq[-1]}")
+
 #     plt.xticks(np.arange(clr_freq_data['Clear Freq Start'][0] / 1e6, clr_freq_data['Clear Freq End'][0] / 1e6, .02))
 plt.plot(Freq, Power, label='Spectrum')
 plt.xlabel('Frequency (MHz)')
@@ -103,4 +106,4 @@ for index, row in clr_freq_data.iterrows():
 
 # Display plot
 plt.legend()
-plt.savefig("plots/debug/spectrum_plot.clrbands.png")
+plt.savefig("plots/debug/spectrum_plot.clrbands.1.png")

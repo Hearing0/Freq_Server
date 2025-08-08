@@ -17,6 +17,10 @@ Raises:
     ValueError: "The required columns 'Start Frequency', 'End Frequency', and 'Noise' are not present in the 'clr_freq_data' CSV file."
 """
 
+# Config Constants
+FULL_SPECTRUM = False
+
+
 fft_files = glob.glob('log/fft_spectrum/*.csv')
 clr_log_files = glob.glob('log/clr_freq/clr_freq.*.csv')
 
@@ -70,9 +74,14 @@ Freq = spectra_data['Frequency'].to_numpy() / 1e6  # Convert Frequency to MHz
 
 # Plot spectrum data
 plt.figure(figsize=(16, 12))  # Increase the figure size
-if 'Clear Freq Start' in clr_freq_data.columns and 'Clear Freq End' in clr_freq_data.columns:
-    plt.xlim(clr_freq_data['Clear Freq Start'][0] / 1e6, clr_freq_data['Clear Freq End'][0] / 1e6)
-    plt.xticks(np.arange(clr_freq_data['Clear Freq Start'][0] / 1e6, clr_freq_data['Clear Freq End'][0] / 1e6, .02))
+if FULL_SPECTRUM:
+    plt.xlim(Freq[0], Freq[-1])
+else:
+    margin = 0.15  # MHz, adjust as needed
+    x_min = clr_freq_data['Clear Freq Start'][0] / 1e6 - margin
+    x_max = clr_freq_data['Clear Freq End'][0] / 1e6 + margin
+    plt.xlim(x_min, x_max)
+    plt.xticks(np.arange(x_min, x_max, .02))
 plt.plot(Freq, Power, label='Spectrum')
 plt.xlabel('Frequency (MHz)')
 plt.ylabel('Power')

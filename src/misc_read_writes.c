@@ -244,7 +244,20 @@ void write_clr_freq_bin(char *filename, freq_band *clr_bands) {
 
     fwrite(&clr_start, sizeof(int), 1, file);
     fwrite(&clr_end, sizeof(int), 1, file);
-    fwrite(clr_bands, sizeof(freq_band), CLR_BANDS_MAX, file);
+    for (int i = 0; i < CLR_BANDS_MAX; i ++) {
+        // int noise = (int) clr_bands[i].noise;
+        fwrite(&(clr_bands[i].f_start), sizeof(int), 1, file);
+        fwrite(&(clr_bands[i].noise), sizeof(double), 1, file);
+        fwrite(&(clr_bands[i].f_end), sizeof(int), 1, file);
+
+        log_trace("    clr band[%d]: | %dMHz -- Noise: %f -- %dMHz |", 
+            i, 
+            clr_bands[i].f_start, 
+            clr_bands[i].noise, 
+            clr_bands[i].f_end
+        );  
+    }
+    sleep(5);
 
     fclose(file);
 }
