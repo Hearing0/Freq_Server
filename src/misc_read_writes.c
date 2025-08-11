@@ -56,43 +56,18 @@ void update_ptr_no_global(void *old_ptr, void *new_ptr, void** temp_ptrs, int te
     add_ptr_no_global((void **)&new_ptr, temp_ptrs, &temp_ptrs_num);
 }
 
-
-/**
- * @brief  Writes a complex Frequency Spectrum to csv file to be plotted in python.
- * @note   By DF
- * @param  *filename:       The filepath for the saved CSV file
- * @param  *spectrum:       Frequency Spectrum in complex form
- * @param  *freq_vector:    Array for Frequency (steps of frequency per sample)
- * @param  num_samples:     Number of four_spectrums collected per antenna
- * @retval None
- * @deprecated Replaced by write_spectrum_mag_csv. No longer using complex form to similify calculations
- */
-void write_spectrum_csv(char *filename, fftw_complex *spectrum, double *freq_vector, int num_samples) {
-    // Timestamp Variables
+void gen_filename(char *name_template, char *ext, char *name) {
     time_t raw_time;
     struct tm *time_info;
-    int buffer_size = 100;
+    int buffer_size = 192;
     char timestamp[buffer_size];
-    char name[buffer_size]; 
 
     // Generate timestamp
     time(&raw_time);
     time_info = gmtime(&raw_time);
     strftime(timestamp, buffer_size, "%Y.%m.%d_%H:%M:%S", time_info);
-    snprintf(name, sizeof(name), filename, timestamp, "csv");
-
-    FILE *file = fopen(name, "w");
-    if (file == NULL) {
-        file_access_error(name);
-        return;
-    }
-    fprintf(file, "Frequency,Power\n");
-    for (int i = 0; i < num_samples; i++) {
-        double magnitude = sqrt(creal(spectrum[i]) * creal(spectrum[i]) + cimag(spectrum[i]) * cimag(spectrum[i]));
-        fprintf(file, "%f,%f\n", freq_vector[i], magnitude);
-    }
-
-    fclose(file);
+    snprintf(name, buffer_size, name_template, timestamp, ext);
+    log_trace("generated filename: %s", name);
 }
 
 /**
@@ -105,7 +80,44 @@ void write_spectrum_csv(char *filename, fftw_complex *spectrum, double *freq_vec
  * @retval None
  */
 void write_spectrum_mag_csv(
-    char *filename, 
+    FILE **file,
+    double *spectrum, 
+    double *freq_vector, 
+    int num_samples 
+) {
+    // Timestamp Variables
+    time_t raw_time;
+    struct tm *time_info;
+    int buffer_size = 100;
+    char timestamp[buffer_size];
+    char name[buffer_size]; 
+
+    // If file doesn't exists, ... 
+    if (*file == NULL) {
+        // Generate timestamp
+        time(&raw_time);
+        time_info = gmtime(&raw_time);
+        strftime(timestamp, buffer_size, "%Y.%m.%d_%H:%M:%S", time_info);
+        snprintf(name, sizeof(name), SPECTRUM_FILE, timestamp, "csv");
+        
+        *file = fopen(name, "w");
+        if (*file == NULL) {
+            file_access_error(name);
+            return;
+        }
+
+        fprintf(*file, "Frequency,Power\n");
+    }
+    
+    for (int i = 0; i < num_samples; i++) {
+        fprintf(*file, "%f,%f\n", freq_vector[i], spectrum[i]);
+    }
+
+    fflush(*file);
+}
+
+void write_spectrum_mag_bin(
+    FILE **file,
     double *spectrum, 
     double *freq_vector, 
     int num_samples
@@ -117,56 +129,38 @@ void write_spectrum_mag_csv(
     char timestamp[buffer_size];
     char name[buffer_size]; 
 
-    // Generate timestamp
-    time(&raw_time);
-    time_info = gmtime(&raw_time);
-    strftime(timestamp, buffer_size, "%Y.%m.%d_%H:%M:%S", time_info);
-    snprintf(name, sizeof(name), filename, timestamp, "csv");
 
-    FILE *file = fopen(name, "w");
-    if (file == NULL) {
-        file_access_error(name);
-        return;
-    }
-    fprintf(file, "Frequency,Power\n");
-    for (int i = 0; i < num_samples; i++) {
-        fprintf(file, "%f,%f\n", freq_vector[i], spectrum[i]);
-    }
+    // If file doesn't exists, ... 
+    if (*file == NULL) {
+        // Generate timestamp
+        time(&raw_time);
+        time_info = gmtime(&raw_time);
+        strftime(timestamp, buffer_size, "%Y.%m.%d_%H:%M:%S", time_info);
+        snprintf(name, sizeof(name), SPECTRUM_FILE, timestamp, "bin");
+        
+        *file = fopen(name, "wb");
+        if (*file == NULL) {
+            file_access_error(name);
+            return;
+        }
 
-    fclose(file);
-}
-
-void write_spectrum_mag_bin(char *filename, double *spectrum, double *freq_vector, int num_samples) {
-    // Timestamp Variables
-    time_t raw_time;
-    struct tm *time_info;
-    int buffer_size = 100;
-    char timestamp[buffer_size];
-    char name[buffer_size]; 
-
-    // Generate timestamp
-    time(&raw_time);
-    time_info = gmtime(&raw_time);
-    strftime(timestamp, buffer_size, "%Y.%m.%d_%H:%M:%S", time_info);
-    snprintf(name, sizeof(name), filename, timestamp, "bin");
-
-    FILE *file = fopen(name, "wb");
-    if (file == NULL) {
-        file_access_error(name);
-        return;
+        // Only write number of samples once per file
+        fwrite(&num_samples, sizeof(int), 1, *file);
     }
 
-    fwrite(&num_samples, sizeof(int), 1, file);
-    fwrite(freq_vector, sizeof(double), num_samples, file);
-    fwrite(spectrum, sizeof(double), num_samples, file);
-
+    fwrite(freq_vector, sizeof(double), num_samples, *file);
+    fwrite(spectrum, sizeof(double), num_samples, *file);
 
     log_trace("  ********************************************   Bytes of spectrum_mag: %ld, %ld, %ld\n", sizeof(num_samples), sizeof(freq_vector), sizeof(spectrum));
-    fclose(file);
+    fflush(*file);
 }
 
 
-void write_clr_freq_csv(char *filename, freq_band *clr_bands, int *clr_range) {
+void write_clr_freq_csv(
+    FILE **file,
+    freq_band *clr_bands, 
+    int *clr_range
+) {
     // Timestamp Variables
     time_t raw_time;
     struct tm *time_info;
@@ -174,58 +168,68 @@ void write_clr_freq_csv(char *filename, freq_band *clr_bands, int *clr_range) {
     char timestamp[buffer_size];
     char name[buffer_size]; 
 
-    // Generate timestamp
-    time(&raw_time);
-    time_info = gmtime(&raw_time);
-    strftime(timestamp, buffer_size, "%Y.%m.%d_%H:%M:%S", time_info);
-    snprintf(name, sizeof(name), filename, timestamp, "csv");
-    
-    FILE *file = fopen(name, "w");
-    if (file == NULL) {
-        file_access_error(name);
-        return;
+    // If file doesn't exists, ... 
+    if (*file == NULL) {
+        // Generate timestamp
+        time(&raw_time);
+        time_info = gmtime(&raw_time);
+        strftime(timestamp, buffer_size, "%Y.%m.%d_%H:%M:%S", time_info);
+        snprintf(name, sizeof(name), CLR_FREQ_FILE, timestamp, "csv");
+        
+        *file = fopen(name, "w");
+        if (*file == NULL) {
+            file_access_error(name);
+            return;
+        }
+        fprintf(*file, "Start Frequency,End Frequency,Noise,Clear Freq Start,Clear Freq End\n");
     }
 
-    // Find Start and End of Clear Freq Range to Write later
-
-    fprintf(file, "Start Frequency,End Frequency,Noise,Clear Freq Start,Clear Freq End\n");
+    // Write Clear Search Range on first line of each sample set only
     for (int i = 0; i < CLR_BANDS_MAX; i++) {
         // Special: Print Clear Freq Range on Line 0
-        if (i == 0) fprintf(file, "%d,%d,%f,%d,%d\n", clr_bands[i].f_start, clr_bands[i].f_end, clr_bands[i].noise,clr_range[0],clr_range[1]);
-        else fprintf(file, "%d,%d,%f\n", clr_bands[i].f_start, clr_bands[i].f_end, clr_bands[i].noise);
+        if (i == 0) fprintf(*file, "%d,%d,%f,%d,%d\n", clr_bands[i].f_start, clr_bands[i].f_end, clr_bands[i].noise,clr_range[0],clr_range[1]);
+        else fprintf(*file, "%d,%d,%f\n", clr_bands[i].f_start, clr_bands[i].f_end, clr_bands[i].noise);
     }
-
-    fclose(file);
+    
+    fflush(*file);
 }
 
-void write_clr_freq_bin(char *filename, freq_band *clr_bands, int* clr_range) {
+void write_clr_freq_bin(
+    FILE **file,
+    freq_band *clr_bands, 
+    int* clr_range
+) {
     // Timestamp Variables
     time_t raw_time;
     struct tm *time_info;
     int buffer_size = 100;
     char timestamp[buffer_size];
     char name[buffer_size]; 
+    
 
-    // Generate timestamp
-    time(&raw_time);
-    time_info = gmtime(&raw_time);
-    strftime(timestamp, buffer_size, "%Y.%m.%d_%H:%M:%S", time_info);
-    snprintf(name, sizeof(name), filename, timestamp, "bin");
-
-    FILE *file = NULL;
-    file = fopen(name, "wb");
-    if (file == NULL) {
-        file_access_error(name);
-        return;
+    // If file doesn't exists, ... 
+    if (*file == NULL) {
+        // Generate timestamp
+        time(&raw_time);
+        time_info = gmtime(&raw_time);
+        strftime(timestamp, buffer_size, "%Y.%m.%d_%H:%M:%S", time_info);
+        snprintf(name, sizeof(name), CLR_FREQ_FILE, timestamp, "bin");
+        
+        *file = fopen(name, "wb");
+        if (*file == NULL) {
+            file_access_error(name);
+            return;
+        }
     }
 
-    fwrite(&(clr_range[0]), sizeof(int), 1, file);
-    fwrite(&(clr_range[1]), sizeof(int), 1, file);
+    // Write clear search range, then clear bands
+    fwrite(&(clr_range[1]), sizeof(int), 1, *file);
+    fwrite(&(clr_range[0]), sizeof(int), 1, *file);
     for (int i = 0; i < CLR_BANDS_MAX; i ++) {
         // int noise = (int) clr_bands[i].noise;
-        fwrite(&(clr_bands[i].f_start), sizeof(int), 1, file);
-        fwrite(&(clr_bands[i].noise), sizeof(double), 1, file);
-        fwrite(&(clr_bands[i].f_end), sizeof(int), 1, file);
+        fwrite(&(clr_bands[i].f_start), sizeof(int), 1, *file);
+        fwrite(&(clr_bands[i].noise), sizeof(double), 1, *file);
+        fwrite(&(clr_bands[i].f_end), sizeof(int), 1, *file);
 
         log_trace("    clr band[%d]: | %dMHz -- Noise: %f -- %dMHz |", 
             i, 
@@ -234,9 +238,8 @@ void write_clr_freq_bin(char *filename, freq_band *clr_bands, int* clr_range) {
             clr_bands[i].f_end
         );  
     }
-    sleep(5);
-
-    fclose(file);
+    
+    fflush(*file);
 }
 
 /**

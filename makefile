@@ -1,6 +1,6 @@
-CFLAGS= -O3 -pthread -DLOG_USE_COLOR
+CFLAGS= -pthread -DLOG_USE_COLOR -Og
 
-LIBS= -lfftw3_threads -lfftw3 -lm -lrt -liniparser
+LIBS= -lfftw3_threads -lfftw3 -lm -lrt -liniparser 
 
 INCLUDE= 
 
