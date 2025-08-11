@@ -77,7 +77,7 @@ plt.figure(figsize=(16, 12))  # Increase the figure size
 if FULL_SPECTRUM:
     plt.xlim(Freq[0], Freq[-1])
 else:
-    margin = 0.15  # MHz, adjust as needed
+    margin = 0.05  # MHz, adjust as needed
     x_min = clr_freq_data['Clear Freq Start'][0] / 1e6 - margin
     x_max = clr_freq_data['Clear Freq End'][0] / 1e6 + margin
     plt.xlim(x_min, x_max)

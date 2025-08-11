@@ -21,8 +21,8 @@ fft_files       = glob.glob(FFT_DIRECTORY_PATH)
 clr_files  = glob.glob(CLR_DIRECTORY_PATH)
 
 # Sort the files by modification time to get the latest one
-fft_files.sort(key=lambda x: os.path.getmtime(x), reverse=True)
-clr_files.sort(key=lambda x: os.path.getmtime(x), reverse=True)
+fft_files.sort(reverse=True)
+clr_files.sort(reverse=True)
 if not fft_files:
     raise FileNotFoundError(f"No fft .bin files found in the specified directory: {FFT_DIRECTORY_PATH}")
 if not clr_files:
@@ -100,7 +100,7 @@ if FULL_SPECTRUM:
     plt.xlim(Freq[0], Freq[-1])
     # plt.xticks(np.arange(Freq[0], Freq[-1], .02))
 else:
-    margin = 0.15  # MHz, adjust as needed
+    margin = 0.05  # MHz, adjust as needed
     x_min = clr_search_range[0] / 1e6 - margin
     x_max = clr_search_range[1] / 1e6 + margin
     plt.xlim(x_min, x_max)

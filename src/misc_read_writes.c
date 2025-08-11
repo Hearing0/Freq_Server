@@ -166,7 +166,7 @@ void write_spectrum_mag_bin(char *filename, double *spectrum, double *freq_vecto
 }
 
 
-void write_clr_freq_csv(char *filename, freq_band *clr_bands) {
+void write_clr_freq_csv(char *filename, freq_band *clr_bands, int *clr_range) {
     // Timestamp Variables
     time_t raw_time;
     struct tm *time_info;
@@ -187,24 +187,18 @@ void write_clr_freq_csv(char *filename, freq_band *clr_bands) {
     }
 
     // Find Start and End of Clear Freq Range to Write later
-    int clr_start = RAND_MAX;
-    int clr_end = 0;
-    for (int i = 0; i < CLR_BANDS_MAX; i++) {
-        if (clr_bands[i].f_start < clr_start && clr_bands[i].noise < RAND_MAX) clr_start = clr_bands[i].f_start;
-        if (clr_bands[i].f_end > clr_end && clr_bands[i].noise < RAND_MAX) clr_end = clr_bands[i].f_end;
-    }    
 
     fprintf(file, "Start Frequency,End Frequency,Noise,Clear Freq Start,Clear Freq End\n");
     for (int i = 0; i < CLR_BANDS_MAX; i++) {
         // Special: Print Clear Freq Range on Line 0
-        if (i == 0) fprintf(file, "%d,%d,%f,%d,%d\n", clr_bands[i].f_start, clr_bands[i].f_end, clr_bands[i].noise,clr_start,clr_end);
+        if (i == 0) fprintf(file, "%d,%d,%f,%d,%d\n", clr_bands[i].f_start, clr_bands[i].f_end, clr_bands[i].noise,clr_range[0],clr_range[1]);
         else fprintf(file, "%d,%d,%f\n", clr_bands[i].f_start, clr_bands[i].f_end, clr_bands[i].noise);
     }
 
     fclose(file);
 }
 
-void write_clr_freq_bin(char *filename, freq_band *clr_bands) {
+void write_clr_freq_bin(char *filename, freq_band *clr_bands, int* clr_range) {
     // Timestamp Variables
     time_t raw_time;
     struct tm *time_info;
@@ -225,16 +219,8 @@ void write_clr_freq_bin(char *filename, freq_band *clr_bands) {
         return;
     }
 
-    // Find Start and End of Clear Freq Range to Write later
-    int clr_start = RAND_MAX;
-    int clr_end = 0;
-    for (int i = 0; i < CLR_BANDS_MAX; i++) {
-        if (clr_bands[i].f_start < clr_start && clr_bands[i].noise < RAND_MAX) clr_start = clr_bands[i].f_start;
-        if (clr_bands[i].f_end > clr_end && clr_bands[i].noise < RAND_MAX) clr_end = clr_bands[i].f_end;
-    }    
-
-    fwrite(&clr_start, sizeof(int), 1, file);
-    fwrite(&clr_end, sizeof(int), 1, file);
+    fwrite(&(clr_range[0]), sizeof(int), 1, file);
+    fwrite(&(clr_range[1]), sizeof(int), 1, file);
     for (int i = 0; i < CLR_BANDS_MAX; i ++) {
         // int noise = (int) clr_bands[i].noise;
         fwrite(&(clr_bands[i].f_start), sizeof(int), 1, file);
@@ -311,92 +297,6 @@ void read_clr_freq_bin(char *filename, freq_band *clr_bands, int *clr_start, int
     fclose(file);
 }
 
-
-/**
- * @brief  Reads intial Clear Freq parameters from a converted txt file (see utils/pickle_text_convert.py)
- * @note   
- * @param  *filename:           Filepath of converted txt file
- * @param  *meta_data:          Meta data for current sample batch
- * @param  **clear_freq_range:  Range for the Clear Freq
- * @param  ***raw_samples:      14x2500 complex sample array
- * @retval None
-//  */
-// void read_input_data(const char *filename, sample_meta_data *meta_data, double **clear_freq_range, fftw_complex ***raw_samples, int test_clr_range, int test_samples) {
-//     FILE *file = fopen(filename, "r");
-//     if (file == NULL) {
-//         file_access_error(filename);
-//         exit(EXIT_FAILURE);
-//     }
-// 
-//     char line[256];
-//     int antenna_list_size = 0;
-// 
-//     while (fgets(line, sizeof(line), file)) {
-//         if (sscanf(line, "number_of_samples: %d", &meta_data->number_of_samples) == 1) continue;
-//         if (sscanf(line, "usrp_rf_rate: %d", &meta_data->usrp_rf_rate) == 1) continue;
-//         // if (sscanf(line, "usrp_fcenter: %d", &meta_data->usrp_fcenter) == 1) continue;
-//         // if (sscanf(line, "x_spacing: %lf", &meta_data->x_spacing) == 1) continue;
-//         // if (strncmp(line, "clear_freq_range:", 15) == 0 && test_clr_range) {
-//         //     clear_freq_range = realloc(clear_freq_range, 2 * sizeof(double));
-//         //     int i = 0;
-//         //     char *token = strtok(line + 16, ",");
-//         //     while (token != NULL) {
-//         //         (*clear_freq_range)[i] = atof(token);
-//         //         i++;
-//         //     }
-//         //     continue;
-//         // }
-// 
-//         // Antenna List Data
-//         if (strncmp(line, "antenna_list:", 13) == 0) {
-//             char *token = strtok(line + 14, ",");
-//             while (token != NULL) {
-//                 // Remove any leading or trailing whitespace from token
-//                 while (isspace(*token)) token++;
-//                 char *end = token + strlen(token) - 1;
-//                 while (end > token && isspace(*end)) end--;
-//                 *(end + 1) = '\0';
-// 
-//                 meta_data->antenna_list = realloc(meta_data->antenna_list, (++antenna_list_size) * sizeof(int));
-//                 meta_data->antenna_list[antenna_list_size - 1] = atoi(token);
-// 
-//                 token = strtok(NULL, ",");
-//             }
-//             meta_data->num_antennas = antenna_list_size;
-//             continue;
-//         }
-// 
-//         // Raw Sample Data
-//         // if (strncmp(line, "raw_samples:", 12) == 0 && test_samples) {
-//         //     printf("[Clear Freq Search] Aquiring test four_spectrums from pickle files...\n");
-//         //     // Allocate mem
-//         //     *raw_samples = (fftw_complex **)fftw_malloc(meta_data->num_antennas * sizeof(fftw_complex *));
-//         //     for (int i = 0; i < meta_data->num_antennas; i++) {
-//         //         (*raw_samples)[i] = (fftw_complex *)fftw_malloc(meta_data->number_of_samples * sizeof(fftw_complex));
-//         //     }
-//         //     if (*raw_samples == NULL) {
-//         //         perror("Error allocating memory for raw four_spectrums");
-//         //         exit(EXIT_FAILURE);
-//         //     }
-//  
-//         //     // Store data
-//         //     for (int i = 0; i < meta_data->num_antennas; i++) {
-//         //         fftw_complex *ant_samples = (*raw_samples)[i];
-// 
-//         //         for (int j = 0; j < meta_data->number_of_samples; j++) {
-//         //             double real, imag;
-//         //             fgets(line, sizeof(line), file);
-//         //             sscanf(line, "%lf,%lf", &real, &imag);
-//  
-//         //             ant_samples[j] = real + I * imag;
-//         //         }
-//         //     }
-//         //     break;
-//         // }
-//     }
-// 
-//     fclose(file);
-// }
 
 void read_restrict(char *filepath, freq_band *restricted_freq, int *restricted_num) {
     FILE *file = fopen(filepath, "r");

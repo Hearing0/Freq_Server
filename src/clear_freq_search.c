@@ -596,12 +596,12 @@ void calc_clear_freq_on_raw_samples(
         // Write logs if its folder accessable
         if (BIN_OR_CSV_LOG == 0) {
             write_spectrum_mag_bin(SPECTRUM_FILE, avg_spectrum, avg_freq_vector, num_avg_samples);
-            write_clr_freq_bin(CLR_FREQ_FILE, clr_bands);                                           // Used to plot Clear Freq Bands w/ spectrum_plot.clr_freq.py
+            write_clr_freq_bin(CLR_FREQ_FILE, clr_bands, clear_freq_range);                                           // Used to plot Clear Freq Bands w/ spectrum_plot.clr_freq.py
         } else {
             // write_sample_mag_csv(sample_im_file, sample_im, freq_vector, meta_data);                                                     // Used to check complex Samples after Beamforming; ...
             // write_sample_mag_csv(sample_re_file, sample_re, freq_vector, meta_data);                                                     // Plot w/ sample_plot.py
             write_spectrum_mag_csv(SPECTRUM_FILE, avg_spectrum, avg_freq_vector, num_avg_samples);  // Spectrum after Spectrum FFT averaging; plot w/ spectrum_plot.py
-            write_clr_freq_csv(CLR_FREQ_FILE, clr_bands);
+            write_clr_freq_csv(CLR_FREQ_FILE, clr_bands, clear_freq_range);
         }
         log_warn("\'save_spectra\' found; Logged individual FFT Spectrum and Clear Frequency batches.");
     } else log_warn("\'save_spectra\' not found. Not logging spectra nor clr_frequency.");
@@ -1003,9 +1003,9 @@ void process_beam_clr_freq(
 
         // Write logs if its folder accessable
         if (BIN_OR_CSV_LOG == 0) {
-            write_clr_freq_bin(avg_clr_freq_filename, clr_bands);
+            write_clr_freq_bin(avg_clr_freq_filename, clr_bands, clear_freq_range);
         } else {
-            write_clr_freq_csv(avg_clr_freq_filename, clr_bands); // Used to plot Clear Freq Bands w/ spectrum_plot.clr_freq.py
+            write_clr_freq_csv(avg_clr_freq_filename, clr_bands, clear_freq_range); // Used to plot Clear Freq Bands w/ spectrum_plot.clr_freq.py
         }
         log_trace("[CFS] \'save_spectra\' found; Logged individual FFT Spectrum and Clear Frequency batches.");
     } else log_trace("[CFS] \'save_spectra\' not found. Not logging spectra nor clr_frequency.");
