@@ -83,7 +83,7 @@ void write_spectrum_mag_csv(
     FILE **file,
     double *spectrum, 
     double *freq_vector, 
-    int num_samples 
+    int num_samples
 ) {
     // Timestamp Variables
     time_t raw_time;
