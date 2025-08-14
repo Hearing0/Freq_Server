@@ -106,7 +106,6 @@ plt.figure(figsize=(16, 12))  # Increase the figure size
 # if FULL_SPECTRUM:
 #     plt.xlim(data[1][0], data[1][-1])
 #     plt.xticks(np.arange(Freq[0], Freq[-1], .02))
-# plt.scatter(4, freq[np.argmax(power) // num_samples], c='red')
 plt.pcolormesh(
     time,
     freq,
@@ -123,14 +122,13 @@ plt.colorbar(label='Power (N/A)')
 ax = plt.gca()
 ax.xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter("%H:%M:%S"))
 plt.xticks(rotation=45)
-# plt.tight_layout()
+plt.xlabel('Time (UTC)')
 
 # Format Freq y-axis
 plt.ylabel('Frequency (MHz)')
-plt.title('Temporal Spectrum Heatmap Analysis')
+plt.suptitle(f'{time[0].date()}', y=.023, fontsize=10)
+plt.title('Temporal Spectrum Heatmap Analysis', y=1.01)
 plt.grid(True)
-# plt.ylim(0, 10000)
-# plt.yticks(np.arange(0, 25e3, 2000))
 
 # # Plot the clear frequency bands
 # colors = sns.color_palette("colorblind", len(clr_freq_data))
@@ -150,7 +148,6 @@ plt.grid(True)
         
 #     idx += 1
 
-
 # Display plot
-plt.legend()
+plt.tight_layout()
 plt.savefig("plots/debug/spectrum_plot.heat.bin.png")

@@ -16,7 +16,9 @@
         "tuple": "c",
         "type_traits": "c",
         "utility": "c",
-        "typeinfo": "c"
+        "typeinfo": "c",
+        "compare": "c",
+        "cstdint": "c"
     },
     "docomment.activateOnEnter": true,
     "C_Cpp.errorSquiggles": "enabled",
