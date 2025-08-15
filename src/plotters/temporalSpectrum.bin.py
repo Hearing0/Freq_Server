@@ -1,10 +1,11 @@
 import pandas as pd
+import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
 import os
 import struct
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 # Note that this ignores non-TCS files as they do not accurately depict the spectrum over time  
 
@@ -15,6 +16,7 @@ N_FFT_PLOTTED = 12
 # Directory Constants
 FFT_DIRECTORY_PATH = 'log/fft_spectrum/*.tcs.bin'
 CLR_DIRECTORY_PATH = 'log/clr_freq/*.bin'
+SAVE_PLOT_AS       = 'plots/debug/spectrum_plot.temporal.bin.png'
 
 INT_SIZE = 4
 DOUBLE_SIZE = 8
@@ -38,7 +40,7 @@ print(fft_files[0])
 
 
 # Parse N-hours of data to plot
-num_samples = 625
+num_samples = 5000
 set_count = 0
 
 clr_freq_data = []
@@ -60,6 +62,7 @@ with open(fft_files[0], 'rb') as file:
             break    
         timestamp = datetime.fromtimestamp(struct.unpack("<Q", time_bytes)[0], tz = timezone.utc)
         data[0].append(timestamp)
+        time_start = timestamp
         print(f"Timestamp: {timestamp}")
 
         freq_bytes = file.read(DOUBLE_SIZE * num_samples)
@@ -84,6 +87,7 @@ print(f"# of sets: {set_count}")
 
 
 # Reformat data for simple plotting
+print("Reformatting data for plotting...")
 power   = np.arange(set_count * num_samples).reshape(num_samples, set_count)
 for i in range(0,num_samples):
     for j in range(0, set_count):
@@ -95,6 +99,7 @@ freq    = np.array(data[1][0])
 print("shape: ", time.shape)
 print("shape: ", freq.shape)
 print("shape: ", power.shape)
+print("Checking for NaN in Power...")
 print("NaNs in power: ", np.isnan(power).any())
 
 if len(time) == power.shape[0]: print("time axis alligned")
@@ -106,6 +111,7 @@ plt.figure(figsize=(16, 12))  # Increase the figure size
 # if FULL_SPECTRUM:
 #     plt.xlim(data[1][0], data[1][-1])
 #     plt.xticks(np.arange(Freq[0], Freq[-1], .02))
+print("Creating Temporal Spectrum Analysis Plot...")
 plt.pcolormesh(
     time,
     freq,
@@ -113,10 +119,10 @@ plt.pcolormesh(
     shading='auto',
     cmap='viridis',
     vmin=np.percentile(power, 5),
-    vmax=np.percentile(power, 95),
+    vmax=np.percentile(power, 95)
 )
-plt.colorbar(label='Power (N/A)')
-
+cbar = plt.colorbar(label='Power (N/A)')
+# cbar.ax.yaxis.set_major_formatter(plt.ticker.LogFormatter(labelOnlyBase=False))
 
 # Format UTC time x-axis
 ax = plt.gca()
@@ -130,24 +136,10 @@ plt.suptitle(f'{time[0].date()}', y=.023, fontsize=10)
 plt.title('Temporal Spectrum Heatmap Analysis', y=1.01)
 plt.grid(True)
 
-# # Plot the clear frequency bands
-# colors = sns.color_palette("colorblind", len(clr_freq_data))
-# idx = 0
-# for clr_freq in clr_freq_data:
-#     start_freq = clr_freq[0] / 1e6  # Convert to MHz
-#     noise = clr_freq[1]
-#     end_freq = clr_freq[2] / 1e6  # Convert to MHz
-    
-#     # Ignore Dummy Bands 
-#     if noise < 100000:
-#         # Mark the frequency band
-#         plt.axvspan(start_freq, end_freq, color=colors[idx], alpha=.5)        
-#         mid_freq = (start_freq + end_freq) / 2
-#         plt.text(mid_freq, 20000 + 1500 * (idx % 2), f"{round(start_freq, 2)}-{round(end_freq, 2)} MHz\nNoise: {round(noise, 2)}", 
-#                 horizontalalignment='center', verticalalignment='bottom',fontsize=9, bbox=dict(facecolor='white', alpha=0.8))
-        
-#     idx += 1
-
 # Display plot
 plt.tight_layout()
-plt.savefig("plots/debug/spectrum_plot.heat.bin.png")
+plt.savefig(SAVE_PLOT_AS)
+
+
+print("Plotting Finished")
+print("Saved as:", SAVE_PLOT_AS)
