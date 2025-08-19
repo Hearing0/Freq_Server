@@ -16,7 +16,7 @@ N_FFT_PLOTTED = 12
 # Directory Constants
 FFT_DIRECTORY_PATH = 'log/fft_spectrum/*.tcs.bin'
 CLR_DIRECTORY_PATH = 'log/clr_freq/*.bin'
-SAVE_PLOT_AS       = 'plots/debug/spectrum_plot.temporal.bin.png'
+SAVE_PLOT_AS       = 'plots/debug/spectrogram.kod.png'
 
 INT_SIZE = 4
 DOUBLE_SIZE = 8
@@ -57,30 +57,36 @@ with open(fft_files[0], 'rb') as file:
     # print(num_samples)
 
     while True:
+        # Store Time
         time_bytes = file.read(TIME_SIZE)
         if not time_bytes or len(time_bytes) < TIME_SIZE:
             break    
         timestamp = datetime.fromtimestamp(struct.unpack("<Q", time_bytes)[0], tz = timezone.utc)
         data[0].append(timestamp)
         time_start = timestamp
-        print(f"Timestamp: {timestamp}")
 
+        # Store Frequency
         freq_bytes = file.read(DOUBLE_SIZE * num_samples)
         if not freq_bytes or len(freq_bytes) < DOUBLE_SIZE * num_samples:
             break
         freq_vector = struct.unpack('d' * num_samples, freq_bytes)
-        print(freq_vector[0])
 
+        # Store Power 
         power_bytes = file.read(DOUBLE_SIZE * num_samples)
         if not power_bytes or len(power_bytes) < DOUBLE_SIZE * num_samples:
             break
         power_data = struct.unpack('d' * num_samples, power_bytes)
-        print(power_data[0])
         data[2].append(np.array(power_data))
 
-        # print(data[2])
+        # Print starting data
+        if set_count == 0: 
+            print(f"Timestamp: {timestamp}")
+            print(freq_vector[0])
+            print(power_data[0])
 
         set_count += 1
+
+    # Convert Freq from Hz to MHz
     data[1].append(np.array(freq_vector) / 1e6)
 
 print(f"# of sets: {set_count}")
@@ -107,7 +113,7 @@ if len(freq) == power.shape[1]: print("freq axis alligned")
 
 
 # Plot spectrum data
-plt.figure(figsize=(16, 12))  # Increase the figure size
+plt.figure(figsize=(16, 14))  # Increase the figure size
 # if FULL_SPECTRUM:
 #     plt.xlim(data[1][0], data[1][-1])
 #     plt.xticks(np.arange(Freq[0], Freq[-1], .02))
@@ -133,7 +139,7 @@ plt.xlabel('Time (UTC)')
 # Format Freq y-axis
 plt.ylabel('Frequency (MHz)')
 plt.suptitle(f'{time[0].date()}', y=.023, fontsize=10)
-plt.title('Temporal Spectrum Heatmap Analysis', y=1.01)
+plt.title('Radar Spectrogram', y=1.01)
 plt.grid(True)
 
 # Display plot
