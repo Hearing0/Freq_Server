@@ -154,9 +154,7 @@ void write_spectrum_mag_bin(
         // Only write number of samples once per file
         log_trace("num_samples: %d",num_samples);
         fwrite(&num_samples, sizeof(int), 1, *file);
-
     }
-    sleep(5);
 
     __uint64_t t = (__uint64_t) time(NULL); // Restrict bytes 
 
