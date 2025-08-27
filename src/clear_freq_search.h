@@ -60,7 +60,7 @@ int ini_parse(const char* filename, ini_handler handler, void* user);
 
 
 // Config and Debug Flags
-#define BIN_OR_CSV_LOG  1   // 0 for Bin, otherwise CSV
+#define BIN_OR_CSV_LOG  0   // 0 for Bin, otherwise CSV
 
 #define TEST_SAMPLES 0
 #define TEST_CLR_RANGE 1
@@ -68,7 +68,8 @@ int ini_parse(const char* filename, ini_handler handler, void* user);
 // Config Filepaths
 #define SPECTRAL_LOG_FILE   "save_spectra"
 #define LOG_PATH            "log/"
-#define SPECTRUM_FILE       "log/fft_spectrum/fft_spectrum.%s.%s.%c.%s"
-#define CLR_FREQ_FILE       "log/clr_freq/clr_freq.%s.%s.%c.%s"
+#define SPECTRUM_FILE       "log/fft_spectrum/%s.%s.%c.fft%s"
+#define CLR_FREQ_FILE       "log/clr_freq/%s.%s.%c.clr%s"
+#define CLR_STOR_FILE       "log/clr_freq/%s.%s.%c.clrlog.csv"
 #define SAMPLE_RE_FILE      "log/sample_re.csv"
 #define SAMPLE_IM_FILE      "log/sample_im.csv"
