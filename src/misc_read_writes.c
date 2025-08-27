@@ -117,7 +117,7 @@ void write_spectrum_mag_csv(
         time(&raw_time);
         time_info = gmtime(&raw_time);
         strftime(timestamp, buffer_size, "%Y%m%d.%H%M.%S", time_info);
-        snprintf(name, sizeof(name), SPECTRUM_FILE, timestamp, ststr, channel+96, ".csv");
+        snprintf(name, sizeof(name), SPECTRUM_FILE, timestamp, ststr, channel+'`', ".csv");
 
         file = fopen(name, "w");
         if (file == NULL) {
@@ -168,7 +168,7 @@ void write_spectrum_mag_bin(
         time(&raw_time);
         time_info = gmtime(&raw_time);
         strftime(timestamp, buffer_size, "%Y%m%d.%H%M.%S", time_info);
-        snprintf(name, sizeof(name), SPECTRUM_FILE, timestamp, ststr, channel+96, ".bin");
+        snprintf(name, sizeof(name), SPECTRUM_FILE, timestamp, ststr, channel+'`', ".bin");
 
         file = fopen(name, "wb");
         if (file == NULL) {
@@ -218,7 +218,7 @@ void write_clr_freq_csv(
         time(&raw_time);
         time_info = gmtime(&raw_time);
         strftime(timestamp, buffer_size, "%Y%m%d.%H%M.%S", time_info);
-        snprintf(name, sizeof(name), CLR_FREQ_FILE, timestamp, ststr, channel+96, ".csv");
+        snprintf(name, sizeof(name), CLR_FREQ_FILE, timestamp, ststr, channel+'`', ".csv");
 
         file = fopen(name, "w");
         if (file == NULL) {
@@ -270,7 +270,7 @@ void write_clr_freq_bin(
         time(&raw_time);
         time_info = gmtime(&raw_time);
         strftime(timestamp, buffer_size, "%Y%m%d.%H%M.%S", time_info);
-        snprintf(name, sizeof(name), CLR_FREQ_FILE, timestamp, ststr, channel+96, ".bin");
+        snprintf(name, sizeof(name), CLR_FREQ_FILE, timestamp, ststr, channel+'`', ".bin");
 
         file = fopen(name, "wb");
         if (file == NULL) {
@@ -454,7 +454,7 @@ void get_timestamp( char* buffer){
 	struct tm *timeinfo;
 	time(&rawtime);
 	timeinfo = gmtime (&rawtime);
-    strftime(buffer, 32, "%Y%m%d.%H%M.%S", timeinfo);
+	strftime(buffer,32,"%G.%m%d.%H%M%S",timeinfo);
 }
 
 void get_file_name(char* filename, char* filepath){

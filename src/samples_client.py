@@ -1065,7 +1065,8 @@ i = 0
 while (i < 20):
    
     for r_idx in range(0, 2):
-        for c_idx in range(1, 3):
+        for c_idx in range(3, 5):
+            print(f"\n\n--- Radar {r_idx}, Channel {c_idx} ---\n\n")
             
             meta_data['number_of_samples'] = 2500
             CFS.send_samples(
