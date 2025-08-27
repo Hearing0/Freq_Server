@@ -3,10 +3,6 @@
 #include <string.h>
 #include <stdbool.h>
 
-#ifndef CLR_BANDS_MAX
-#define CLR_BANDS_MAX 6
-#endif
-
 
 // Logging Vars
 #define LOG_TERMINAL_LEVEL  0                           // 0 = TRACE, 1 = DEBUG, 2 = INFO, 3 = WARN, 4 = ERROR, 5 = FATAL  
@@ -19,7 +15,6 @@
 #define FFTW_THREADS            2                       // Number of threads to use for FFTW
 #define USE_ACTIVE_MUTE         1                       // 0 to only use muted antennas in Array Config, 1 to use Array Config + let CFS detect low-power antennas to mute
 #define USE_MULTI_RANGE         1                       // 1 to use CFS' multiple clear ranges optimization, 0 to optimize for single clear range
-#define ONE_PLUS_PROCESSING     1                       // 1 to let CFS process sample spectra for current clr range and next clr range. else only process spectra for current range
 
 // Filepaths Vars
 #define ARRAY_CONFIG_FILEPATH           "array_config.ini"
@@ -30,9 +25,9 @@
 #define SAMPLES_NUM             2500
 #define ANTENNA_NUM             16
 #define STATIC_ANTENNA_NUM      20 
-#define STATIC_RADAR_NUM        4                       // Max Number of possible radars in an array
-#define STATIC_CHANNEL_NUM      6                       // Max Number of possible channels in an array
-#define STATIC_RANGE_NUM        6                       // Max number of possible clear ranges per radar
+#define STATIC_RADAR_NUM        2                       // Max Number of possible radars in an array
+#define STATIC_CHANNEL_NUM      4                      // Max Number of possible channels in an array
+#define STATIC_RANGE_NUM        8                       // Max number of possible clear ranges per radar
 #define RESERV_NUM              (STATIC_RADAR_NUM * STATIC_CHANNEL_NUM) // Number of reserved freq bands in the radar_table 
 #define BEAM_NUM                16                      // Number of beams to process
 #define SAMPLE_TIME             3                       // Time per Sample (in seconds)
@@ -42,10 +37,7 @@
 #ifndef RESTRICT_NUM
 #define RESTRICT_NUM            50                      // Number of restricted freq bands in the restrict.dat.inst
 #endif
-#ifndef CLR_BANDS_MAX
-#define CLR_BANDS_MAX           6
-#endif
-#define CLR_STORAGE_NUM         10
+#define CLR_STORAGE_NUM         1000
 #define SITE_ID_ELEM            3                       // 3 = 3-letter identifier 
 
 #define SAMPLES_SHM_SIZE        (ANTENNA_NUM * SAMPLES_NUM * 2 * sizeof(int)) 
@@ -56,7 +48,7 @@
 #define RESTRICT_SHM_SIZE       (RESTRICT_NUM * 2 * sizeof(int))          // 2 = start and end freqs
 #define META_DATA_SHM_SIZE      ((META_ELEM + ANTENNA_NUM) * sizeof(double))
 #define ANTENNA_SHM_SIZE        (1 * sizeof(int))
-#define CLR_BANDS_SHM_SIZE      (1 * sizeof(int) * 3)    
+#define CLR_BAND_SHM_SIZE       (1 * sizeof(int) * 3)    
 #define SITE_ID_SHM_SIZE        (SITE_ID_ELEM * sizeof(char))
 #define RADAR_ID_SHM_SIZE       (1 * sizeof(int))
 #define CHANNEL_ID_SHM_SIZE     (1 * sizeof(int))
@@ -98,6 +90,7 @@
 
 typedef struct {
     char radar_stid[4];
+    char radar_stid_2[4];
     double x_spacing;
     int nradars;
     int nbeams;

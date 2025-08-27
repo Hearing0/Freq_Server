@@ -2,11 +2,8 @@
 #include <fftw3.h>      // FFT transform library
 #include "ini_parser.h"
 
-#ifndef CLR_BANDS_MAX
-#define CLR_BANDS_MAX 6
-#endif
 #ifndef RESTRICT_NUM
-#define RESTRICT_NUM            50                  // Number of restricted freq bands in the restrict.dat.inst
+#define RESTRICT_NUM 50                  // Number of restricted freq bands in the restrict.dat.inst
 #endif
 
 #define VERBOSE 1
@@ -24,7 +21,6 @@ typedef struct freq_band {
     int f_start;
     int f_end;
     double noise;
-    bool is_selected;
 } freq_band;
 
 typedef struct radar_freq_data {
@@ -72,7 +68,8 @@ int ini_parse(const char* filename, ini_handler handler, void* user);
 // Config Filepaths
 #define SPECTRAL_LOG_FILE   "save_spectra"
 #define LOG_PATH            "log/"
-#define SPECTRUM_FILE       "log/fft_spectrum/fft_spectrum.%s.%s"
-#define CLR_FREQ_FILE       "log/clr_freq/clr_freq.%s.%s"
+#define SPECTRUM_FILE       "log/fft_spectrum/%s.%s.%c.fft%s"
+#define CLR_FREQ_FILE       "log/clr_freq/%s.%s.%c.clr%s"
+#define CLR_STOR_FILE       "log/clr_freq/%s.%s.%c.clrlog.csv"
 #define SAMPLE_RE_FILE      "log/sample_re.csv"
 #define SAMPLE_IM_FILE      "log/sample_im.csv"
