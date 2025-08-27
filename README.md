@@ -5,7 +5,7 @@ This is an isolated testbed for the Clear Frequency Service routine, which was d
 Additional features include:
 - Average Antenna Power Tracker (good for determining problematic antennas)
 - Temporal Clear Search (increases accuracy after ~1 min of runtime, i.e. 20x 3-sec sample sets)
-- Temporal Spectrum Heatmap Plotter
+- Spectrogram Plotter for TCS FFT Spectra data
 - CFS Logger
 - FFT Spectrum logs
 - Clear Freq logs

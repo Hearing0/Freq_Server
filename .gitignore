@@ -11,10 +11,12 @@ __pycache__
 
 *.o
 
-server
+"server"
 
 *.avg
 
 "log/clr_freq/
 
 "log/fft_spectrum/
+
+server
