@@ -540,7 +540,7 @@ void calc_clear_freq_on_raw_samples(
         } else {
             // write_sample_mag_csv(sample_im_file, sample_im, freq_vector, meta_data);                                                     // Used to check complex Samples after Beamforming; ...
             // write_sample_mag_csv(sample_re_file, sample_re, freq_vector, meta_data);                                                     // Plot w/ sample_plot.py
-            log_trace("%s %s", fft_file, clr_file);
+
             write_spectrum_mag_csv(
                 NULL,
                 ststr,

@@ -1536,7 +1536,6 @@ int main() {
                     // Set log age to current gmt hour
                     log_age[cur_radar][cur_channel] = time(NULL) - (time(NULL) % 3600);
                 }
-
             }
 
             log_info( "    avg_ratio: %d", avg_ratio);
