@@ -31,6 +31,8 @@ channels = ['a', 'b', 'c', 'd']
 
 # Parse the date string
 def parse_date_argument(date_string):
+    if date_string == 'yesterday' or date_string == 'y':
+        return datetime.now(timezone.utc) - timedelta(days=1)
     try:
         # Example format: YYYY-MM-DD
         return datetime.strptime(date_string, '%Y-%m-%d')
