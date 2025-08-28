@@ -546,8 +546,9 @@ void calc_clear_freq_on_raw_samples(
                 NULL,
                 ststr,
                 channel,
-                avg_spectrum, 
-                avg_freq_vector, 
+                -1,
+                avg_spectrum,
+                avg_freq_vector,
                 num_avg_samples
             );  // Spectrum after FFT averaging; plot w/ spectrum_plot.py
 

@@ -190,6 +190,7 @@ void write_spectrum_mag_bin(
 
     // log_trace("  ********************************************   Writing to file: %s\n", filename == NULL ? name : filename);
     // log_trace("  ********************************************   Number of samples: %d\n", num_samples);
+    log_trace("  ********************************************   Beam number: %d\n", beam_num);
 
     // Print the timestamp in human-readable format
     // char time_str[32];
@@ -201,7 +202,7 @@ void write_spectrum_mag_bin(
     // log_trace("  ********************************************   First Power: %f\n", spectrum[0]);
 
     fwrite(&num_samples, sizeof(int), 1, file);
-    if (beam_num != -1) fwrite(&beam_num, sizeof(int), 1, file);
+    fwrite(&beam_num, sizeof(int), 1, file);
     fwrite(&t, sizeof(__uint64_t), 1, file);
     fwrite(freq_vector, sizeof(double), num_samples, file);
     fwrite(spectrum, sizeof(double), num_samples, file);
