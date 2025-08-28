@@ -87,7 +87,7 @@ print(f"Generating {args.stid} spectrogram for {date_str} from {args.time_start}
 
 # Filter files based on the specified date
 all_fft_files = glob.glob(FFT_DIRECTORY_PATH)
-date_pattern = re.compile(r'fft_spectrum\.(\d{4})\.(\d{2})\.(\d{2})_\d{2}:\d{2}:\d{2}\.tcs\.bin$')
+date_pattern = re.compile(r'(\d{4})(\d{2})(\d{2})_\d{2}\.{args.stid}\.fft\.tcs\.bin$')
 def file_matches_date(f, date_str):
     m = date_pattern.search(os.path.basename(f))
     if not m:

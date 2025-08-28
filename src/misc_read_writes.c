@@ -98,6 +98,7 @@ void write_spectrum_mag_csv(
     char *filename,
     char *ststr,
     int channel,
+    int beam_num,
     double *spectrum, 
     double *freq_vector, 
     int num_samples
@@ -138,7 +139,7 @@ void write_spectrum_mag_csv(
     __uint64_t t = (__uint64_t) time(NULL); // Restrict bytes 
     
     for (int i = 0; i < num_samples; i++) {
-        if (i == 0) fprintf(file, "%f,%f,%" PRId64 "\n", freq_vector[i], spectrum[i], t);
+        if (i == 0) fprintf(file, "%f,%f,%d,%" PRId64 "\n", freq_vector[i], spectrum[i], beam_num, t);
         fprintf(file, "%f,%f\n", freq_vector[i], spectrum[i]);
     }
 
@@ -149,6 +150,7 @@ void write_spectrum_mag_bin(
     char *filename,
     char *ststr,
     int channel,
+    int beam_num,
     double *spectrum, 
     double *freq_vector, 
     int num_samples
@@ -187,6 +189,7 @@ void write_spectrum_mag_bin(
     __uint64_t t = (__uint64_t) time(NULL); // Restrict bytes 
 
     fwrite(&num_samples, sizeof(int), 1, file);
+    fwrite(&beam_num, sizeof(int), 1, file);
     fwrite(&t, sizeof(__uint64_t), 1, file);
     fwrite(freq_vector, sizeof(double), num_samples, file);
     fwrite(spectrum, sizeof(double), num_samples, file);
