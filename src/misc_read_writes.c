@@ -184,21 +184,13 @@ void write_spectrum_mag_bin(
             file_access_error(filename);
             return;
         }
-
-        // Check beam_num
-        log_trace("beam_num: %d", beam_num);
-        if (beam_num < 0 || beam_num >= 15) {
-            log_error("ERROR: Beam number out of range: %d", beam_num);
-            perror("ERROR: Beam number out of range");
-            sleep(1);
-        }
     }
 
     __uint64_t t = (__uint64_t) time(NULL); // Restrict bytes 
 
     // log_trace("  ********************************************   Writing to file: %s\n", filename == NULL ? name : filename);
     // log_trace("  ********************************************   Number of samples: %d\n", num_samples);
-    log_trace("  ********************************************   Beam number: %d\n", beam_num);
+    // log_trace("  ********************************************   Beam number: %d\n", beam_num);
 
     // Print the timestamp in human-readable format
     // char time_str[32];
@@ -211,17 +203,6 @@ void write_spectrum_mag_bin(
 
     fwrite(&num_samples, sizeof(int), 1, file);
     fwrite(&beam_num, sizeof(int), 1, file);
-
-    // // verify beam_num is written correctly
-    // fflush(file);
-    // fseek(file, sizeof(int), SEEK_SET); // Move to where beam_num was written
-    // int verify_beam_num = 0;
-    // fread(&verify_beam_num, sizeof(int), 1, file);
-    // if (verify_beam_num != beam_num) {
-    //     log_error("Error writing beam_num to file. Expected: %d, Got: %d\n", beam_num, verify_beam_num);
-    //     sleep(1);
-    // }
-
     fwrite(&t, sizeof(__uint64_t), 1, file);
     fwrite(freq_vector, sizeof(double), num_samples, file);
     fwrite(spectrum, sizeof(double), num_samples, file);
