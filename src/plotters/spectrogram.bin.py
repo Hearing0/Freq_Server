@@ -13,14 +13,16 @@ import re
 ### Note that this plotter ignores non-TCS files as they do not accurately depict the spectrum over time  
 # Change station ID here or via command line argument
 DEFAULT_STID = 'kod'
+IS_REMOTE = True  # If true, save plots to REMOTE_PLOT_DIRECTORY_PATH instead of PLOT_DIRECTORY_PATH
 
 # Config Vars
 FULL_SPECTRUM = False
-N_FFT_PLOTTED = 12
+N_BEAMS = 16
 
 # Directory Constants
 FFT_DIRECTORY_PATH  = 'log/fft_spectrum/*.tcs.bin'
 PLOT_DIRECTORY_PATH = 'plots/debug/'
+REMOTE_PLOT_DIRECTORY_PATH = '/tank/storage/SUPERDARN/data/daily_plots/KOD/FFTs/' # Alternative directory to save plots to (for remote servers)
 
 INT_SIZE = 4
 DOUBLE_SIZE = 8
@@ -92,8 +94,10 @@ if args.date:
 else:
     date_str = datetime.now(timezone.utc).strftime('%Y-%m-%d') 
 
-print(f"Generating {args.stid} spectrogram for {date_str} from {args.time_start} to {args.time_end} UTC")
 
+
+
+print(f"Generating {args.stid} spectrogram for {date_str} from {args.time_start} to {args.time_end} UTC")
 all_fft_files = glob.glob(FFT_DIRECTORY_PATH)
 
 # If a channel is specified, only filter that channel
@@ -136,13 +140,18 @@ else:
             continue
 
 
-
-        # Load the latest spectral magnitude data from .bin file
-        set_count = 0
+        # set_count tracks number of valid data sets for each beam separately
+        set_count = [0 for _ in range(N_BEAMS)]
         found_time_before_start_bound = False
         found_time_end_bound = False
         clr_freq_data = []
-        data = [[] for _ in range(3)]
+
+        # create a data list to hold time, freq, power for each beam
+        data = [[] for _ in range(N_BEAMS)]
+        for b_num in range(N_BEAMS):
+            data[b_num] = [[], [], []]  # time, freq, power
+
+        # Load the latest spectral magnitude data from .bin file
         for fft_file in fft_files:
             print("Loading file:", os.path.basename(fft_file))
 
@@ -163,7 +172,7 @@ else:
                     print("Num Samples:", num_samples)
 
 
-                    # Read beam number (not used in this plotter)
+                    # Read beam number
                     beam_bytes = file.read(INT_SIZE)
                     if not beam_bytes or len(beam_bytes) < INT_SIZE:
                         break
@@ -207,83 +216,123 @@ else:
                     # Only store data within the specified time range            
                     if found_time_before_start_bound is False:
                         # Store valid data
-                        data[0].append(timestamp)
+                        data[beam_number][0].append(timestamp)
                         f_time_start = timestamp
                         freq_vector = struct.unpack('d' * num_samples, freq_bytes)
-                        data[2].append(np.array(power_data))
-                        set_count += 1
+                        data[beam_number][2].append(np.array(power_data))
+                        set_count[beam_number] += 1
 
                         # Print processed data
-                        if set_count % 2500 == 0: 
+                        if set_count[beam_number] % 2500 == 0: 
                             print(f"Processed: {timestamp}")
                             # print(freq_vector[0])
                             # print(power_data[0])
 
-                # Store Freq vector only once
-                if set_count > 0:
-                    data[1].append(np.array(freq_vector) / 1e6)
+                # Store Freq vector only once in beam #0
+                if set_count[0] > 0:
+                    data[0][1].append(np.array(freq_vector) / 1e6)
 
                 if found_time_end_bound:
                     break
 
-        print(f"# of sets: {set_count}")
 
-        # Check if we have data to plot
-        if set_count == 0:
-            print("No valid data found for plotting.")
-            exit(1)
+        print("Finished loading data from files.")
 
-        # Reformat data for simple plotting
-        print("Reformatting data for plotting...")
-        power   = np.arange(set_count * num_samples).reshape(num_samples, set_count)
-        for i in range(0,num_samples):
-            for j in range(0, set_count):
-                power[i][j] = data[2][j][i]
+        time = [[] for _ in range(N_BEAMS)]  # Separate time vector (for all beams)
+        for beam_number in range(N_BEAMS):
 
-        time    = np.array(data[0])
-        freq    = np.array(data[1][0])
+            print(f"# of sets for beam #{beam_number}: {set_count[beam_number]}")
 
-        # Debug: Print data shapes to verify if valid plotting data
-        # print("shape: ", time.shape)
-        # print("shape: ", freq.shape)
-        # print("shape: ", power.shape)
-        # print("Checking for NaN in Power...")
-        # print("NaNs in power: ", np.isnan(power).any())
+            # Check if we have data to plot
+            if set_count[beam_number] == 0:
+                print(f"No valid data found for plotting beam #{beam_number}. Skipping...")
+                continue
 
-        # Plot spectrum data
-        plt.figure(figsize=(16, 14))
-        print("Creating Temporal Spectrum Analysis Plot...")
-        plt.pcolormesh(
-            time,
-            freq,
-            power,
-            shading='auto',
-            cmap='viridis',
-            vmin=0,
-            vmax=50e3
-        )
-        cbar = plt.colorbar(label='Power (N/A)')
+            # Reformat data for plotting (separate power data by beam number for multiple beam plots)
+            print("Reformatting data for plotting beams separately...")
+            power = np.zeros((N_BEAMS, num_samples, max(set_count)))  # shape: (beams, freq_bins, time_bins)
+            for beam_number in range(N_BEAMS):
+                print(f"Reformatting Beam #{beam_number} data...")
+                if set_count[beam_number] == 0:
+                    continue
 
-        # Format UTC time x-axis
-        ax = plt.gca()
-        ax.xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter("%H:%M:%S"))
-        plt.xticks(rotation=45)
-        plt.xlabel('Time (UTC)')
+                power[beam_number] = np.arange(set_count[beam_number] * num_samples).reshape(num_samples, set_count[beam_number])
+                for i in range(0,num_samples):
+                    for j in range(0, set_count[beam_number]):
+                        power[beam_number][i][j] = data[beam_number][2][j][i]
 
-        # Format Freq y-axis
-        plt.ylabel('Frequency (MHz)')
-        plt.suptitle(f'{time[0].date()}', y=.023, fontsize=10)
-        plt.title('Radar Spectrogram', y=1.01)
-        plt.grid(True)
+                # print(data[beam_number][0])
+                time[beam_number]    = np.array(data[beam_number][0])
 
-        # Display plot
-        plt.tight_layout()
-        plot_name = f"spectrogram.{args.stid}.{ch}.{date_str}"
-        plot_name += f"_{args.time_start.strftime('%H%M%S')}-{args.time_end.strftime('%H%M%S')}"
-        plot_name += ".png"
-        save_plot_as = os.path.join(PLOT_DIRECTORY_PATH, plot_name)
-        plt.savefig(save_plot_as)
+                # Debug: Print data shapes to verify if valid plotting data
+                # print(f"Beam #{beam_number} - Time shape: {time[beam_number].shape}")
+
+            # Use freq vector from beam #0 for all beams
+            if set_count[0] > 0:
+                freq    = np.array(data[0][1][0])
+
+            # Debug: Print data shapes to verify if valid plotting data
+            # print("shape: ", time[0].shape)
+            # print("shape: ", freq.shape)
+            # print("shape: ", power[0].shape)
+            # print("Checking for NaN in Power...")
+            # print("NaNs in power: ", np.isnan(power).any())
+
+            # Plot data for each beam
+            for beam_number in range(N_BEAMS):
+                if set_count[beam_number] == 0:
+                    continue
+                print(f"Plotting {args.stid} Channel[{ch}], Beam[{beam_number}]...")
+
+                # Plot spectrum data
+                plt.figure(figsize=(16, 14))
+                plt.pcolormesh(
+                    time[beam_number],
+                    freq,
+                    power[beam_number],
+                    shading='auto',
+                    cmap='viridis',
+                    vmin=0,
+                    vmax=50e3
+                )
+                cbar = plt.colorbar(label='Power (N/A)')
+
+                # Format UTC time x-axis
+                ax = plt.gca()
+                ax.xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter("%H:%M:%S"))
+                plt.xticks(rotation=45)
+                plt.xlabel('Time (UTC)')
+
+                # Format Freq y-axis
+                plt.ylabel('Frequency (MHz)')
+                plt.suptitle(f'{time[beam_number][0].date()}', y=.023, fontsize=10)
+                plt.title(f'{args.stid} Radar Spectrogram: Beam {beam_number}', y=1.01)
+                plt.grid(True)
+
+                # Display plot
+                plt.tight_layout()
+                plot_name = f"spectrogram.{args.stid}.{ch}.b{beam_number}.{date_str}"
+                plot_name += f"_{args.time_start.strftime('%H%M%S')}-{args.time_end.strftime('%H%M%S')}"
+                plot_name += ".png"
+                if IS_REMOTE:
+                    # If remote, use alt directory path and save files directory format as .../FFTs/2025/08.29
+
+                    # Check if remote directory exists, if not create it
+                    remote_dir = os.path.join(
+                        REMOTE_PLOT_DIRECTORY_PATH, 
+                        date_str[:4], 
+                        date_str[5:7] + '.' + date_str[8:10]
+                    )
+                    print("Remote directory:", remote_dir)
+                    if not os.path.exists(remote_dir):
+                        os.makedirs(remote_dir)
+                        print("Created remote directory:", remote_dir)
+
+                    save_plot_as = os.path.join(remote_dir, plot_name)
+                else:
+                    save_plot_as = os.path.join(PLOT_DIRECTORY_PATH, plot_name)
+                plt.savefig(save_plot_as)
 
 
-        print("Plotting Finished")
-        print("Saved as:", save_plot_as)
+                print("Plotting Finished")
+                print("Saved as:", save_plot_as)    
