@@ -1066,38 +1066,39 @@ while (i < 20):
    
     for r_idx in range(0, 2):
         for c_idx in range(3, 5):
-            print(f"\n\n--- Radar {r_idx}, Channel {c_idx} ---\n\n")
-            
-            meta_data['number_of_samples'] = 2500
-            CFS.send_samples(
-                raw_samples, 
-                radar_id=r_idx,
-                # channel_id=c_idx,
-                fcenter=12000,
-                meta_data=meta_data
-            )
-            CFS.request_clr_freq(
-                radar_id=r_idx,
-                channel_id=c_idx,
-                beam_num=0,
-                clr_range=tight_clr_range,
-                sample_sep=340,
-            )            
-           
-            # break
-        break 
+            for b_idx in range(0, 15, 4):
+                print(f"\n\n--- Radar {r_idx}, Channel {c_idx}, Beam {b_idx} ---\n\n")
 
-            # for beam_idx in range(0, 15, 4):
-            #     range_elem = clr_ranges[random.randint(0,3)]
-            #     CFS.request_clr_freq(
-            #         radar_id=r_idx,
-            #         channel_id=c_idx,
-            #         beam_num=beam_idx,
-            #         clr_range=range_elem, 
-            #         sample_sep=340,     # only necesary on first request or if changing
-            #     )
+                meta_data['number_of_samples'] = 2500
+                CFS.send_samples(
+                    raw_samples,
+                    radar_id=r_idx,
+                    # channel_id=c_idx,
+                    fcenter=12000,
+                    meta_data=meta_data
+                )
+                CFS.request_clr_freq(
+                    radar_id=r_idx,
+                    channel_id=c_idx,
+                    beam_num=b_idx,
+                    clr_range=tight_clr_range,
+                    sample_sep=340,
+                )            
             
-    i += 1
+                # break
+            break 
+
+                # for beam_idx in range(0, 15, 4):
+                #     range_elem = clr_ranges[random.randint(0,3)]
+                #     CFS.request_clr_freq(
+                #         radar_id=r_idx,
+                #         channel_id=c_idx,
+                #         beam_num=beam_idx,
+                #         clr_range=range_elem, 
+                #         sample_sep=340,     # only necesary on first request or if changing
+                #     )
+                
+        i += 1
 
 
  # # Test Cases
