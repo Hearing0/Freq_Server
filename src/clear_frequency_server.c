@@ -119,8 +119,8 @@ int radar_table_sizes[] = {
 
 // FFT, Clear Freq, Logging Files
 FILE *log_file = NULL;
-char *fft_file[STATIC_RADAR_NUM][STATIC_CHANNEL_NUM][128] = {0};
-char *clr_file[STATIC_RADAR_NUM][STATIC_CHANNEL_NUM][128] = {0};
+char fft_file[STATIC_RADAR_NUM][STATIC_CHANNEL_NUM][128];
+char clr_file[STATIC_RADAR_NUM][STATIC_CHANNEL_NUM][128];
 
 
 void add_ptr(void **ptr) {
@@ -490,7 +490,7 @@ void handle_sig(int sig) {
     exit(sig);
 }
 
-void write_clr_log_csv(freq_band *clr_storage, int clr_num, char *ststr, int channel, int clr_range[STATIC_RANGE_NUM][2]) {
+void write_clr_log_csv(freq_band *clr_storage, int clr_num, char *ststr, int channel, int clr_range[]) {
     // Timestamp Variables
     time_t raw_time;
     struct tm *time_info;
@@ -520,7 +520,7 @@ void write_clr_log_csv(freq_band *clr_storage, int clr_num, char *ststr, int cha
         log_trace("Clear Freq Band: | %dHz -- Noise: %f -- %dHz |\n", clr_band.f_start, clr_band.noise, clr_band.f_end);
         
         // Record Clear Freq
-        fprintf(file, "%d,%d,%f\n", clr_band.f_start, clr_band.f_end, clr_band.noise);
+        fprintf(file, "%d,%d,%f,%d,%d\n", clr_band.f_start, clr_band.f_end, clr_band.noise, clr_range[0], clr_range[1]);
     }
 
     fclose(file);
@@ -663,6 +663,11 @@ int main() {
     signal(SIGTERM, handle_sig);
     signal(SIGINT, handle_sig);
     signal(SIGSEGV, handle_sig);
+
+    char tcs_spectra_filename_template[128] = {0};
+    char tcs_spectra_filename[128] = {0};
+    char tcs_clr_filename_template[128] = {0};
+    char tcs_clr_filename[128] = {0};
 
     // Initialize Logging
     log_file = init_log(LOG_TERMINAL_LEVEL, LOG_FILE_LEVEL, LOG_FILEPATH);
@@ -898,6 +903,9 @@ int main() {
     freq_band selected_clr_band = {0};
     int def_low_range[STATIC_RADAR_NUM] = {0};
     int def_high_range[STATIC_RADAR_NUM]= {0};
+
+    int tmp_clr_range[2] = {0};
+    int old_clr_range[2] = {0};
 
     time_t log_age[STATIC_RADAR_NUM][STATIC_CHANNEL_NUM];
     memset(log_age, 0, sizeof(log_age));
@@ -1373,9 +1381,6 @@ int main() {
 
             // Read Clear Range
             if (*(int*) (clr_range_obj.shm_ptr) != 0) {
-                int tmp_clr_range[2] = {0};
-                int old_clr_range[2] = {0};
-
                 log_debug( "Clear Range reading...");
                 read_int(tmp_clr_range, clr_range_obj.shm_ptr, 2);
 
@@ -1391,8 +1396,16 @@ int main() {
                 if (USE_MULTI_RANGE == 1) {
                     // If Multi Range Optimization, Check existing clear ranges
                     for (int i = 0; i < STATIC_RANGE_NUM; i++) {
-                        if (tmp_clr_range[0] == clr_range[cur_radar][i][0] && tmp_clr_range[1] == clr_range[cur_radar][i][1]) {
-                            range_exists = true;
+                        // Check if Clear Range is within 2 MHz of an existing range
+                        if ( abs((clr_range[cur_radar][i][0]+clr_range[cur_radar][i][1])/2000 -
+                                 (tmp_clr_range[0]+tmp_clr_range[1])/2000) < 2000 ) {
+
+                            if (clr_range[cur_radar][i][0] == def_low_range[cur_radar] &&
+                                clr_range[cur_radar][i][1] == def_high_range[cur_radar]) {
+                                range_exists = false;
+                            } else {
+                                range_exists = true;
+                            }
                             old_clr_range[0] = clr_range[cur_radar][i][0];
                             old_clr_range[1] = clr_range[cur_radar][i][1]; 
                             cur_range = i;
@@ -1406,7 +1419,9 @@ int main() {
                         } else {
                             log_trace("not searching full usrp range");
                             using_full_usrp_range[cur_radar][i] = false;
-                        } 
+                        }
+
+                        if (range_exists == true) break;
                     }
                 } else {
                     // If Single Range Optimization, only check 1st range
@@ -1488,7 +1503,6 @@ int main() {
             radar_table[cur_radar][cur_channel].clr_band.noise = 0;
             radar_table[cur_radar][cur_channel].clr_band.f_end = 0;
             radar_table[cur_radar][cur_channel].last_time = 0;
-            radar_table[cur_radar][cur_channel].last_time = 0;
 
             // Check for inactive channels to unmask
             for (int r_idx = 0; r_idx < STATIC_RADAR_NUM; r_idx++) {
@@ -1519,15 +1533,11 @@ int main() {
                     log_trace("extension \"%s\" enabled", ext);
                     
                     log_trace("Initializing FFT File");
-                    char* tcs_spectra_filename_template[128] = {0};
-                    char* tcs_spectra_filename[128] = {0};
                     sprintf(tcs_spectra_filename_template, SPECTRUM_FILE, "%s", ststr[cur_radar], channel+'`', ".tcs%s");
                     gen_filename_to_hour(&tcs_spectra_filename_template, ext, &tcs_spectra_filename);
                     strcpy(fft_file[cur_radar][cur_channel], tcs_spectra_filename);
 
                     log_trace("Initializing Clear Freq File");
-                    char *tcs_clr_filename_template[128] = {0};
-                    char *tcs_clr_filename[128] = {0};
                     sprintf(tcs_clr_filename_template, CLR_FREQ_FILE, "%s", ststr[cur_radar], channel+'`', ".tcs%s");
                     gen_filename_to_hour(&tcs_clr_filename_template, ext, &tcs_clr_filename);
                     strcpy(clr_file[cur_radar][cur_channel], tcs_clr_filename);
@@ -1566,7 +1576,7 @@ int main() {
                         clear_freq_search(
                             temp_samples, 
                             active_antennas[cur_radar],
-                            clr_range[cur_radar][cur_range],
+                            tmp_clr_range,
                             cur_beam,
                             sample_sep,
                             avg_ratio,
@@ -1604,7 +1614,7 @@ int main() {
                     process_beam_clr_freq(
                         avg_beam_spectrum,
                         cur_beam,
-                        clr_range[cur_radar][cur_range],
+                        tmp_clr_range,
                         sample_sep,
                         restricted_freq, 
                         restricted_num + RESERV_NUM,
@@ -1661,8 +1671,8 @@ int main() {
                 
                 // Reserve the frequency band 
                 radar_table[cur_radar][cur_channel].clr_band = *clr_band;
-                radar_table[cur_radar][cur_channel].clear_freq_range[0] = clr_range[cur_radar][cur_range][0];
-                radar_table[cur_radar][cur_channel].clear_freq_range[1] = clr_range[cur_radar][cur_range][1];
+                radar_table[cur_radar][cur_channel].clear_freq_range[0] = tmp_clr_range[0];
+                radar_table[cur_radar][cur_channel].clear_freq_range[1] = tmp_clr_range[1];
                 radar_table[cur_radar][cur_channel].last_time = time(NULL);
                 if (restricted_num + cur_radar * STATIC_CHANNEL_NUM + cur_channel >= RESTRICT_NUM) {
                     log_error("    ERROR: Reservation into restricted_freq failed due to overflow index!");
@@ -1708,7 +1718,7 @@ int main() {
             clr_storage_i[cur_radar][cur_channel]++;
             log_info( "Clr Freq Log: Radar[%d][%d] @ %d/%d", cur_radar, cur_channel, clr_storage_i[cur_radar][cur_channel], CLR_STORAGE_NUM);
             if (clr_storage_i[cur_radar][cur_channel] >= CLR_STORAGE_NUM) {
-                write_clr_log_csv(clr_band_storage[cur_radar][cur_channel], clr_storage_i[cur_radar][cur_channel], ststr[cur_radar], channel, clr_range[cur_radar]);
+                write_clr_log_csv(clr_band_storage[cur_radar][cur_channel], clr_storage_i[cur_radar][cur_channel], ststr[cur_radar], channel, tmp_clr_range);
                 clr_storage_i[cur_radar][cur_channel] = 0;
             }
             
