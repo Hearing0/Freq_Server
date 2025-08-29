@@ -879,7 +879,7 @@ void process_avg_beam_spectra(
         // Write logs if its folder accessable
         if (BIN_OR_CSV_LOG == 0) {
             write_spectrum_mag_bin(
-                fft_file,
+                NULL,
                 ststr,
                 channel,
                 cur_beam,
@@ -891,7 +891,7 @@ void process_avg_beam_spectra(
             // write_sample_mag_csv(sample_im_file, sample_im, freq_vector, meta_data);      // Used to check complex Samples after Beamforming; ...
             // write_sample_mag_csv(sample_re_file, sample_re, freq_vector, meta_data);      // Plot w/ sample_plot.py
             write_spectrum_mag_csv(
-                fft_file,
+                NULL,
                 ststr,
                 channel,
                 cur_beam,
